@@ -70,9 +70,8 @@ That link opens the add-on store with the repository filled in. To do it by hand
 **Settings → Add-ons → Add-on store**, choose **Repositories** from the menu in the top right, and
 paste `https://github.com/0z00z0/ha-adaptive-heating`.
 
-**The image the add-on pulls is not published yet, so an install from the store cannot finish.** Until
-it is, the only way onto a box is as a local add-on built there, which is written up under *Installing
-the add-on on a box by hand* in `docs/mechanisms.md`.
+The manifest names no image, so the Supervisor builds the add-on on the box at install. That takes
+about a minute on a small Intel processor, and over thirty minutes on a Raspberry Pi 3B+.
 
 Once installed, reload the store, open **Adaptive heating** and start it. Two switches are off on a
 fresh install whatever the manifest asks for, and both are worth turning on:

@@ -707,8 +707,8 @@ answers which build is running and the Supervisor answers which manifest, and th
 
 ## Installing the add-on on a box by hand
 
-The published image does not exist yet, so the only way onto a box is as a local add-on, built there.
-Measured end to end on the cabin on 2026-09-25 at Supervisor 2026.09.3, amd64.
+This is a local add-on, built on the box from files copied there directly rather than through the
+store. Measured end to end on the cabin on 2026-09-25 at Supervisor 2026.09.3, amd64.
 
 - **The folder is `/addons/<slug>/`**, holding `config.yaml` and `Dockerfile` at its root with the
   `addon/` source tree beside them, because the Supervisor builds a local add-on with the add-on's own
@@ -1741,8 +1741,7 @@ lacks a shell, which no interface provides.
 
 ## The version greeting separates the two houses at no cost
 
-The two public hostnames are easily confused, and the shared credentials document pairs the cabin
-with the wrong one. **The websocket greeting names the core version before any credential is sent**,
+**The websocket greeting names the core version before any credential is sent**,
 so it identifies a box without spending one of the five refusals that earn a ban: a connection to
 `/api/websocket` answers `auth_required` carrying `ha_version`, and the two houses were on different
 core versions.
