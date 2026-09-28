@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+	<!--
+		A host for AdaptiveHeating.Page, which is a Razor Class Library and has none of its own. It exists so a
+		change to the settings page can be rendered against the real stylesheet and photographed before it
+		reaches a cabin: the library already ships the root component and the routes, so this is a Program.cs
+		and a house made up.
+
+		A development tool. It is not part of a release and is never published.
+	-->
+
+	<PropertyGroup>
+		<TargetFramework>net10.0</TargetFramework>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<RootNamespace>PageHost</RootNamespace>
+		<GenerateDocumentationFile>false</GenerateDocumentationFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\..\src\AdaptiveHeating.Page\AdaptiveHeating.Page.csproj" />
+	</ItemGroup>
+
+	<!--
+		Deliberately not in AdaptiveHeating.slnx. A developer tool is not something a build server should build
+		or package.
+	-->
+
+	<ItemGroup>
+		<!--
+			_framework/blazor.web.js lives in this package, not in the shared framework and not in the SDK. Without
+			it every page server-renders once and no circuit ever opens, so nothing on the page responds: a dead
+			UI that reads as a broken page rather than a missing script.
+		-->
+		<PackageReference Include="Microsoft.AspNetCore.App.Internal.Assets" Version="10.0.9" />
+	</ItemGroup>
+
+</Project>

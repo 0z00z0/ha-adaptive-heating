@@ -1,0 +1,210 @@
+/*
+	The settings page's stylesheet, served at _content/AdaptiveHeating.Page/heating.css. Hand-written with no
+	external link and no web font: the page runs at a cabin that may have no line up.
+	Structure copied from the lighting engine's second design and cut to what one page needs.
+*/
+
+/* ==== T. Themes ==== */
+/* One rule per theme, each setting every token this file reads. No rule depends on another's order, and no
+   prefers-color-scheme block: heating-theme.js resolves the device and paints data-theme itself, always. The
+   dark palette's selector also matches the bare :root, so a page whose script did not run still paints
+   instead of falling through to nothing.
+
+   A colour is defined in exactly one of these two blocks and nowhere else in this file. A surface written
+   twice is how a rework once reached a live house with half a palette changed. */
+:root, :root[data-theme="dark"] {
+	color-scheme: dark;
+	--bg: #101418; --surface: #182029; --surface-2: #212c37; --inset: #0b0f13; --line: #35434f; --line-soft: #253039; --card-line: transparent;
+	--ink: #eef3f7; --ink-2: #b7c5d0; --ink-3: #8b9aa6;
+	--accent: #6fc3d8; --accent-ink: #06222b; --focus: #6fc3d8;
+	--heat: #ff9d5c; --heat-bg: #3a2415;
+	--hand: #c1aef8; --hand-bg: #2a2440;
+	--ok: #8fd39b; --ok-bg: #1c2e20;
+	--off: #8b9aa6; --off-bg: #0b0f13;
+	--warn: #f3ce5d; --warn-bg: #362e13; --bad: #ff8b79; --bad-bg: #3c1d19; --on-state: #101418;
+	--shadow-pop: 0 12px 36px rgba(0, 0, 0, 0.55);
+	--t-xs: 12.5px; --t-sm: 14px; --t-md: 16px; --t-lg: 22px; --t-xl: 32px; --lh: 1.5;
+	--ls-dis: -0.012em; --ls-dis-s: -0.008em;
+	--r: 12px; --r-big: 20px; --r-pill: 999px;
+	--w-body: 400; --w-med: 500; --w-semi: 600; --w-strong: 650; --w-bold: 700; --w-black: 800;
+}
+:root[data-theme="light"] {
+	color-scheme: light;
+	--bg: #f5f6f4; --surface: #ffffff; --surface-2: #edefec; --inset: #e4e7e3; --line: #d0d4cf; --line-soft: #e3e6e1; --card-line: #e3e6e1;
+	--ink: #16191b; --ink-2: #434749; --ink-3: #5d6265;
+	--accent: #0f6b86; --accent-ink: #ffffff; --focus: #0f6b86;
+	--heat: #97490b; --heat-bg: #fae2cd;
+	--hand: #5d3ec4; --hand-bg: #e9e2fb;
+	--ok: #1e6d46; --ok-bg: #d6eee0;
+	--off: #5d6265; --off-bg: #e4e7e3;
+	--warn: #6f5200; --warn-bg: #f6e9be; --bad: #a92820; --bad-bg: #f9dbd7; --on-state: #ffffff;
+	--shadow-pop: 0 12px 36px rgba(20, 20, 20, 0.16);
+	--t-xs: 12.5px; --t-sm: 14px; --t-md: 16px; --t-lg: 22px; --t-xl: 32px; --lh: 1.5;
+	--ls-dis: -0.006em; --ls-dis-s: -0.004em;
+	--r: 12px; --r-big: 20px; --r-pill: 999px;
+	--w-body: 400; --w-med: 500; --w-semi: 600; --w-strong: 650; --w-bold: 700; --w-black: 800;
+}
+/* Theme-independent, so they sit apart from the palettes above and are never written per theme. */
+:root {
+	--font-head: "Segoe UI", system-ui, -apple-system, sans-serif;
+	--font-body: "Segoe UI", system-ui, -apple-system, sans-serif;
+	--font-num: ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+/* ==== end T. Themes ==== */
+
+/* ============================================================ shell */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; min-height: 100%; background: var(--bg); }
+body { color: var(--ink); font-family: var(--font-body); font-size: var(--t-md); line-height: var(--lh); }
+
+.app { min-height: 100vh; display: flex; flex-direction: column; background: var(--bg); color: var(--ink); }
+.app a { color: inherit; }
+.app :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+/* The router focuses each page's h1 after navigation; that focus is for a screen reader, not a ring. */
+[tabindex="-1"]:focus { outline: none; }
+
+.top { display: flex; align-items: center; flex-wrap: wrap; gap: 0 28px; min-height: 62px; padding: 0 28px; }
+.brand { display: flex; align-items: center; gap: 9px; font-weight: var(--w-black); white-space: nowrap; }
+.brand svg { width: 22px; height: 22px; color: var(--heat); flex: none; }
+.brand span { font-family: var(--font-head); font-size: 18px; letter-spacing: var(--ls-dis); }
+.top-end { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+.theme-picker { display: flex; align-items: center; gap: 8px; }
+.theme-picker-label { font-size: var(--t-xs); color: var(--ink-3); white-space: nowrap; }
+.theme-select { padding: 5px 10px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface-2); color: var(--ink); font: inherit; font-size: var(--t-sm); }
+
+.main { width: 100%; max-width: 1240px; margin: 0 auto; padding: 18px 28px 48px; display: flex; flex-direction: column; gap: 14px; flex: 1; }
+.pagetitle { margin: 0; font-family: var(--font-head); font-size: var(--t-xl); font-weight: var(--w-bold); letter-spacing: var(--ls-dis); }
+.glass { padding: 18px 20px; border-radius: var(--r-big); background: var(--surface); box-shadow: inset 0 0 0 1px var(--card-line); }
+.lede { margin: 0; color: var(--ink-2); }
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+.subnav { display: flex; flex-wrap: wrap; gap: 4px 18px; font-size: var(--t-sm); font-weight: var(--w-semi); }
+.subnav a { color: var(--ink-2); text-decoration: none; padding-bottom: 2px; border-bottom: 2px solid transparent; }
+.subnav a.cur { color: var(--ink); border-bottom-color: var(--accent); }
+
+.sec-h { display: flex; align-items: center; flex-wrap: wrap; gap: 2px 10px; margin: 0 0 12px; font-family: var(--font-head); font-size: var(--t-lg); font-weight: var(--w-bold); letter-spacing: var(--ls-dis-s); }
+
+/* ==== K. Kit ==== */
+.row-value, .mt-cell, .foot-cell b { font-variant-numeric: tabular-nums; }
+
+.chip { display: inline-flex; align-items: center; gap: 7px; padding: 1px 10px 1px 8px; border-radius: var(--r-pill); font-size: var(--t-xs); font-weight: var(--w-strong); line-height: 1.7; white-space: nowrap; }
+.chip::before { content: ""; flex: none; width: 9px; height: 9px; background: currentColor; border-radius: 50%; }
+.st-heat { color: var(--heat); background: var(--heat-bg); }
+.st-hand { color: var(--hand); background: var(--hand-bg); }
+.st-hand::before { border-radius: 2px; transform: rotate(45deg) scale(0.78); }
+.st-idle { color: var(--off); background: var(--surface-2); }
+.st-idle::before { background: none; box-shadow: inset 0 0 0 1.5px currentColor; }
+.st-ok { color: var(--ok); background: var(--ok-bg); }
+
+.bang { display: inline-grid; place-items: center; flex: none; width: 18px; height: 18px; border-radius: 50%; background: var(--warn); color: var(--on-state); font-size: 12px; font-weight: var(--w-black); line-height: 1; font-family: var(--font-body); font-style: normal; }
+.bang.bad { background: var(--bad); }
+
+/* The container hosting the popover is positioned, or the popover lands against the page instead of the icon. */
+.info { position: relative; display: inline-flex; }
+.info-i { display: inline-grid; place-items: center; flex: none; width: 20px; height: 20px; padding: 0; border: 1px solid var(--line); border-radius: 50%; background: none; color: var(--ink-3); font-family: Georgia, "Times New Roman", serif; font-size: 12px; font-style: italic; font-weight: var(--w-bold); line-height: 1; cursor: pointer; }
+.info-i[aria-expanded="true"] { border-color: var(--ink); color: var(--ink); }
+/* Severity: yellow is worth knowing, red needs attention. */
+.info-i.warn, .info-i.warn[aria-expanded="true"] { border-color: var(--warn); background: var(--warn); color: var(--on-state); }
+.info-i.bad, .info-i.bad[aria-expanded="true"] { border-color: var(--bad); background: var(--bad); color: var(--on-state); }
+.info-pop { position: absolute; z-index: 40; top: calc(100% + 6px); left: -10px; width: 300px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-big); background: var(--surface); box-shadow: var(--shadow-pop); color: var(--ink); font-family: var(--font-body); font-size: var(--t-sm); font-weight: var(--w-body); line-height: 1.45; letter-spacing: 0; text-transform: none; white-space: normal; text-align: left; }
+.info-pop b { display: block; margin-bottom: 2px; font-weight: var(--w-bold); }
+
+.fold { border-radius: var(--r-big); background: var(--surface-2); margin-bottom: 8px; }
+.fold-head { display: flex; align-items: center; gap: 10px; width: 100%; padding: 14px 18px; border: 0; background: none; text-align: left; color: inherit; cursor: pointer; }
+.fold-title { font-family: var(--font-head); font-weight: var(--w-bold); font-size: var(--t-lg); line-height: 1.15; letter-spacing: var(--ls-dis-s); }
+.fold-end { margin-left: auto; display: flex; align-items: center; gap: 10px; min-width: 0; }
+.fold-sum { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-3); font-family: var(--font-num); font-size: 12.5px; }
+.fold.open .fold-sum { display: none; }
+.chev { flex: none; width: 9px; height: 9px; margin: 0 6px 4px; border-right: 2px solid var(--ink-2); border-bottom: 2px solid var(--ink-2); transform: rotate(45deg); }
+.fold.open > .fold-head .chev { transform: rotate(-135deg); margin: 4px 6px 0; }
+.fold-body { padding: 0 18px 18px; }
+
+.rows { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); grid-auto-flow: dense; gap: 10px; }
+.row { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; min-width: 0; padding: 12px 14px; border-radius: var(--r); background: var(--surface); cursor: pointer; }
+.row.wide { grid-column: 1 / -1; cursor: default; }
+.row-label { flex: none; min-width: 0; display: flex; align-items: center; gap: 7px; color: var(--ink); font-size: var(--t-sm); font-weight: var(--w-strong); line-height: 1.3; }
+.row-value { display: block; font-size: 17px; font-weight: var(--w-bold); color: var(--accent); line-height: 1.25; letter-spacing: var(--ls-dis-s); }
+.row-ctl { display: none; align-items: center; flex-wrap: wrap; gap: 6px; margin: 6px 0 0; min-width: 0; max-width: 100%; }
+.row.editing .row-ctl, .row.wide .row-ctl { display: flex; }
+.row.editing { box-shadow: inset 0 0 0 1.5px var(--line); }
+
+/* A reading, not a setting: the inset surface and no pointer say so before the label is read. */
+.readout { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; min-width: 0; padding: 12px 14px; border-radius: var(--r); background: var(--inset); }
+.readout-label { min-width: 0; display: flex; align-items: center; gap: 7px; color: var(--ink-2); font-size: var(--t-sm); font-weight: var(--w-strong); line-height: 1.3; }
+.readout-value { display: block; font-size: 17px; font-weight: var(--w-bold); color: var(--ink); line-height: 1.25; font-variant-numeric: tabular-nums; letter-spacing: var(--ls-dis-s); }
+
+.tail-lab { margin: 14px 0 8px; font-size: var(--t-xs); font-weight: var(--w-bold); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3); }
+
+.seg { display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 2px; border-radius: var(--r-pill); background: var(--inset); max-width: 100%; }
+.seg button { padding: 5px 11px; border: 0; border-radius: var(--r-pill); background: none; color: var(--ink-2); font: inherit; font-size: var(--t-sm); font-weight: var(--w-semi); cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+
+.numfield { display: inline-flex; align-items: baseline; gap: 6px; }
+.cell { padding: 6px 12px; border: 1px solid var(--line); border-radius: var(--r-pill); background: var(--inset); color: var(--ink); font: inherit; font-size: var(--t-sm); max-width: 100%; }
+.cell.num { width: 5.6rem; text-align: right; font-family: var(--font-num); }
+.cell:focus { outline: 2px solid var(--focus); outline-offset: 1px; }
+.unit { color: var(--ink-3); font-size: var(--t-xs); }
+.hint { color: var(--ink-3); font-size: var(--t-xs); }
+
+.btn { padding: 6px 12px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface-2); color: var(--ink); font: inherit; font-size: var(--t-sm); font-weight: var(--w-semi); cursor: pointer; }
+.btn:disabled { opacity: 0.45; cursor: default; }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+/* A dimmed accent still reads as a button to press. Nothing to save looks like nothing to save. */
+.btn.primary:disabled { background: var(--surface-2); color: var(--ink-3); border-color: var(--line); opacity: 1; }
+.btn.danger { color: var(--bad); }
+.btnrow { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+
+.notice { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 0; padding: 10px 14px; border-radius: var(--r); background: var(--surface-2); font-size: var(--t-sm); color: var(--ink-2); }
+.notice.warn { background: var(--warn-bg); color: var(--warn); }
+.notice.bad { background: var(--bad-bg); color: var(--bad); }
+.empty { margin: 0; padding: 20px; border: 1px dashed var(--line); border-radius: var(--r); background: var(--surface-2); text-align: center; color: var(--ink-3); font-size: var(--t-sm); }
+
+.d2-index { position: sticky; top: 0; z-index: 6; display: flex; gap: 6px; padding: 10px 0; overflow-x: auto; scrollbar-width: none; background: var(--bg); }
+.d2-index button { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 6px 13px; border: 1px solid var(--line); border-radius: var(--r-pill); background: var(--surface); color: var(--ink); font: inherit; font-size: var(--t-sm); font-weight: var(--w-semi); white-space: nowrap; cursor: pointer; }
+/* ==== end K. Kit ==== */
+
+/* ==== 1. The mode table ==== */
+/* Rooms down, modes across. A grid rather than a table element, so the same markup can stack on a phone
+   without a second copy of the rows. */
+.modetable { display: grid; grid-template-columns: minmax(8rem, 1.4fr) repeat(5, minmax(6.5rem, 1fr)) auto; gap: 6px 10px; align-items: center; }
+.mt-head { display: contents; }
+.mt-head > span { font-size: var(--t-xs); font-weight: var(--w-bold); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); display: inline-flex; align-items: center; gap: 6px; }
+.mt-row { display: contents; }
+.mt-row > span { padding: 4px 0; border-top: 1px solid var(--line-soft); }
+.mt-room { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px; font-weight: var(--w-strong); min-width: 0; }
+.mt-save { justify-self: end; }
+/* ==== end 1. The mode table ==== */
+
+/* ==== 2. The foot ==== */
+.foot { display: flex; flex-wrap: wrap; gap: 6px 22px; padding: 4px 2px; font-size: var(--t-xs); color: var(--ink-3); }
+.foot-cell { display: inline-flex; align-items: center; gap: 6px; }
+.foot-cell b { color: var(--ink-2); font-family: var(--font-num); font-weight: var(--w-med); }
+/* ==== end 2. The foot ==== */
+
+@media (max-width: 720px) {
+	.top { gap: 0 12px; padding: 0 16px; min-height: 54px; }
+	.main { padding: 12px 16px 24px; gap: 12px; }
+	.glass { padding: 14px 16px; }
+	/* Fixed to the bottom, not hung off the icon: a 300px popover beside a 390px viewport would leave the page. */
+	.info-pop { position: fixed; left: 12px; right: 12px; top: auto; bottom: 12px; width: auto; }
+	.rows { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+	.row { padding: 10px 12px; }
+	.row.editing { grid-column: 1 / -1; }
+	.row-value { font-size: 16px; }
+	.fold-head { padding: 12px 14px; }
+	.fold-title { font-size: 19px; }
+	.fold-body { padding: 0 14px 16px; }
+	.fold-sum { max-width: 42vw; }
+
+	/* One room per block: a six-column grid on a phone gives every cell about three characters. */
+	.modetable { display: flex; flex-direction: column; gap: 10px; }
+	.mt-head { display: none; }
+	.mt-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 10px; padding: 10px 12px; border-radius: var(--r); background: var(--surface-2); }
+	.mt-row > span { padding: 0; border-top: 0; }
+	.mt-room { grid-column: 1 / -1; font-size: var(--t-md); }
+	.mt-cell { display: flex; align-items: baseline; gap: 6px; }
+	.mt-cell::before { content: attr(data-mode); font-size: var(--t-xs); color: var(--ink-3); }
+	.mt-save { grid-column: 1 / -1; justify-self: stretch; }
+	.mt-save .btn { width: 100%; }
+	.cell.num { width: 4.6rem; }
+}

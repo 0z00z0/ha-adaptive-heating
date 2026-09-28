@@ -1,0 +1,5 @@
+# What Home Assistant reads when this repository is added under Settings, Add-ons, Add-on store.
+# The integration in custom_components/ is installed separately and is not part of this list.
+name: Adaptive heating
+url: https://github.com/0z00z0/ha-adaptive-heating
+maintainer: 0z00z0 (https://github.com/0z00z0)

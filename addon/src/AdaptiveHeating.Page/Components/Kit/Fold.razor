@@ -1,0 +1,56 @@
+@* Controlled, not self-managed: the page keeps one fold open at a time, so this reports a click and holds no
+	state of its own. The fold-sum stays in the markup even while open — the stylesheet hides it. *@
+
+<section class="@CssClass" id="@Id">
+	<button type="button" class="fold-head" aria-expanded="@(Open ? "true" : "false")" @onclick="Toggle">
+		<span class="fold-title">@Title</span>
+
+		@if (BangKind is { Length: > 0 } bangKind)
+		{
+			<Bang Kind="@bangKind" Title="@(BangTitle ?? "")" />
+		}
+
+		<span class="fold-end">
+			<span class="fold-sum">@Summary</span>
+			<span class="chev" aria-hidden="true"></span>
+		</span>
+	</button>
+
+	<div class="fold-body" hidden="@(!Open)">
+		@ChildContent
+	</div>
+</section>
+
+@code {
+	/// <summary>Also the anchor id, so a link elsewhere on the page can reach this fold without script.</summary>
+	[Parameter, EditorRequired]
+	public string Id { get; set; } = "";
+
+	[Parameter, EditorRequired]
+	public string Title { get; set; } = "";
+
+	/// <summary>Shown collapsed; a fold with nothing worth summarising leaves this null.</summary>
+	[Parameter]
+	public string? Summary { get; set; }
+
+	/// <summary>"warn" or "bad", or null for none.</summary>
+	[Parameter]
+	public string? BangKind { get; set; }
+
+	[Parameter]
+	public string? BangTitle { get; set; }
+
+	[Parameter]
+	public bool Open { get; set; }
+
+	[Parameter]
+	public EventCallback<bool> OpenChanged { get; set; }
+
+	[Parameter, EditorRequired]
+	public RenderFragment? ChildContent { get; set; }
+
+	private Task Toggle() => OpenChanged.InvokeAsync(!Open);
+
+	// A single expression, not adjacent @(...) blocks: Razor's attribute-value parser mishandles those.
+	private string CssClass => Open ? "fold open" : "fold";
+}

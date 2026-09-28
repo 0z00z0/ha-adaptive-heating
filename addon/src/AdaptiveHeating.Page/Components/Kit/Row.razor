@@ -1,0 +1,49 @@
+@* One setting: the question, the answer under it, and the control. A wide row shows its control always; a
+	narrow one opens on a click, which is what keeps a grid of settings readable on a phone. *@
+
+<div class="@CssClass" @onclick="ToggleEdit">
+	<div class="row-label">
+		<span>@Label</span>
+		<Info Label="@Label" Severity="@Severity">@Help</Info>
+	</div>
+
+	<div class="row-value">@Value</div>
+
+	@* stopPropagation: a click on the control itself must never also toggle editing. *@
+	<div class="row-ctl" @onclick:stopPropagation="true">@ChildContent</div>
+</div>
+
+@code {
+	[Parameter, EditorRequired]
+	public string Label { get; set; } = "";
+
+	/// <summary>The help text for the (i) popover; null gives the row no (i).</summary>
+	[Parameter]
+	public RenderFragment? Help { get; set; }
+
+	[Parameter]
+	public InfoSeverity Severity { get; set; }
+
+	/// <summary>The value shown large, above the control — plain text, never markup.</summary>
+	[Parameter, EditorRequired]
+	public string Value { get; set; } = "";
+
+	/// <summary>Spans every column; its control is always shown, never folded behind a click.</summary>
+	[Parameter]
+	public bool IsWide { get; set; }
+
+	[Parameter]
+	public bool IsEditing { get; set; }
+
+	/// <summary>Raised on a click that lands on the row itself, never on its control.</summary>
+	[Parameter]
+	public EventCallback OnToggleEdit { get; set; }
+
+	[Parameter, EditorRequired]
+	public RenderFragment? ChildContent { get; set; }
+
+	private Task ToggleEdit() => IsWide ? Task.CompletedTask : OnToggleEdit.InvokeAsync();
+
+	private string CssClass =>
+		$"row{(IsWide ? " wide" : "")}{(IsEditing ? " editing" : "")}";
+}

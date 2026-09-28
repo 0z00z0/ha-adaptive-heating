@@ -1,0 +1,144 @@
+@using AdaptiveHeating.Page.Components.Kit
+@using AdaptiveHeating.Planner
+@inject IStringLocalizer<AdaptiveHeating.Page.Resources.PageStrings> Words
+
+@* One fold per period. The header says when it is and what the time means; the body holds one temperature
+	per room. A period is saved on its own. *@
+
+<div class="glass">
+	<div class="sec-h">
+		@Words["ProfileTitle"]
+		<Info Label="@Title" Severity="InfoSeverity.Neutral">@Words["ProfileHelp"]</Info>
+	</div>
+
+	@if (Model.Document.Profile.Count == 0)
+	{
+		<p class="empty">@Words["NoPeriods"]</p>
+	}
+	else
+	{
+		@foreach (ProfileEntry entry in Model.Document.Profile)
+		{
+			ProfileEntry captured = entry;
+
+			<Fold Id="@($"period-{captured.Id}")"
+				  Title="@When(captured)"
+				  Summary="@MeaningWord(captured.Meaning)"
+				  Open="@(Model.OpenEntryId == captured.Id)"
+				  OpenChanged="@(open => Model.ToggleEntry(captured.Id, open))">
+				<div class="rows">
+					@if (Model.Document.DeadlineMeaningAvailable)
+					{
+						<Row Label="@MeansLabel" Value="@MeaningWord(captured.Meaning)" IsWide="true">
+							<Help>@Words["MeaningHelp"]</Help>
+							<ChildContent>
+								<span class="seg">
+									<button type="button" aria-pressed="@Pressed(captured, BoundaryMeaning.Starts)"
+											@onclick="() => SetMeaning(captured, BoundaryMeaning.Starts)">@Words["MeaningStarts"]</button>
+									<button type="button" aria-pressed="@Pressed(captured, BoundaryMeaning.WarmBy)"
+											@onclick="() => SetMeaning(captured, BoundaryMeaning.WarmBy)">@Words["MeaningWarmBy"]</button>
+								</span>
+							</ChildContent>
+						</Row>
+					}
+
+					@foreach (RoomSlice room in Model.Document.Rooms)
+					{
+						RoomSlice capturedRoom = room;
+
+						<Row Label="@capturedRoom.Name"
+							 Value="@InvariantNumber.Degrees(Edited(captured, capturedRoom))"
+							 IsEditing="@(_editing == RowKey(captured, capturedRoom))"
+							 OnToggleEdit="@(() => ToggleEdit(captured, capturedRoom))">
+							<ChildContent>
+								<NumberField Value="@Edited(captured, capturedRoom)"
+										 Label="@capturedRoom.Name"
+										 ValueChanged="@(value => Edit(captured, capturedRoom, value))" />
+							</ChildContent>
+						</Row>
+					}
+				</div>
+
+				<div class="btnrow">
+					<button type="button" class="btn primary" disabled="@(!HasEdits(captured.Id))"
+							@onclick="() => Save(captured)">@Words["Save"]</button>
+				</div>
+			</Fold>
+		}
+	}
+</div>
+
+@code {
+	[Parameter, EditorRequired]
+	public SettingsPageModel Model { get; set; } = default!;
+
+	private readonly Dictionary<(string Entry, string Room), double> _edited = [];
+
+	private readonly Dictionary<string, BoundaryMeaning> _meanings = [];
+
+	private string? _editing;
+
+	private string Title => Words["ProfileTitle"];
+
+	private string MeansLabel => Words["Means"];
+
+	private string MeaningWord(BoundaryMeaning meaning) =>
+		meaning == BoundaryMeaning.WarmBy ? Words["MeaningWarmBy"] : Words["MeaningStarts"];
+
+	// The offset is written with a sign, so a boundary half an hour before sunset reads as one.
+	private string When(ProfileEntry entry) => entry.Anchor switch
+	{
+		BoundaryAnchor.Sunrise => $"{Words["Sunrise"]} {Offset(entry.At)}",
+		BoundaryAnchor.Sunset => $"{Words["Sunset"]} {Offset(entry.At)}",
+		_ => entry.At.ToString(@"hh\:mm", System.Globalization.CultureInfo.CurrentCulture)
+	};
+
+	private static string Offset(TimeSpan offset)
+	{
+		string body = offset.Duration().ToString(@"h\:mm", System.Globalization.CultureInfo.InvariantCulture);
+
+		return offset < TimeSpan.Zero ? $"-{body}" : $"+{body}";
+	}
+
+	private static string RowKey(ProfileEntry entry, RoomSlice room) => $"{entry.Id}/{room.Id}";
+
+	private string Pressed(ProfileEntry entry, BoundaryMeaning meaning) =>
+		MeaningOf(entry) == meaning ? "true" : "false";
+
+	private BoundaryMeaning MeaningOf(ProfileEntry entry) =>
+		_meanings.TryGetValue(entry.Id, out BoundaryMeaning picked) ? picked : entry.Meaning;
+
+	private double Edited(ProfileEntry entry, RoomSlice room) =>
+		_edited.TryGetValue((entry.Id, room.Id), out double typed) ? typed : entry.TemperatureFor(room.Id);
+
+	private bool HasEdits(string entryId) =>
+		_meanings.ContainsKey(entryId) || _edited.Keys.Any(key => key.Entry == entryId);
+
+	private void Edit(ProfileEntry entry, RoomSlice room, double value) => _edited[(entry.Id, room.Id)] = value;
+
+	private void SetMeaning(ProfileEntry entry, BoundaryMeaning meaning) => _meanings[entry.Id] = meaning;
+
+	private void ToggleEdit(ProfileEntry entry, RoomSlice room)
+	{
+		string key = RowKey(entry, room);
+		_editing = _editing == key ? null : key;
+	}
+
+	private void Save(ProfileEntry entry)
+	{
+		Dictionary<string, Stamped<double>> temperatures = [];
+
+		foreach (RoomSlice room in Model.Document.Rooms)
+			temperatures[room.Id] = new Stamped<double>(Edited(entry, room), default, ChangeOrigin.SettingsPage);
+
+		Model.SaveProfileEntry(entry with { Meaning = MeaningOf(entry), Temperatures = temperatures });
+
+		if (Model.LastSaveWasRefused)
+			return;
+
+		_meanings.Remove(entry.Id);
+
+		foreach (RoomSlice room in Model.Document.Rooms)
+			_edited.Remove((entry.Id, room.Id));
+	}
+}

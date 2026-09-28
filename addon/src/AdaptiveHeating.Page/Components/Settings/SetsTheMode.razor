@@ -1,0 +1,158 @@
+@using AdaptiveHeating.Page.Components.Kit
+@inject IStringLocalizer<AdaptiveHeating.Page.Resources.PageStrings> Words
+@inject TheHouseholdClock Household
+
+@* The mode every room runs: what is in force, what chose it, and when a chosen one lets go. A mode chosen here
+	holds for the hours beside it and no longer, after which presence answers again on its own. *@
+
+<div class="glass">
+	<div class="sec-h">
+		@Words["ModeNowTitle"]
+		<Info Label="@Title" Severity="InfoSeverity.Neutral">@Words["ModeNowHelp"]</Info>
+	</div>
+
+	<div class="rows">
+		<Readout Label="@InForceLabel" Value="@ModeWord">
+			<Help>@Words["ModeInForceHelp"]</Help>
+		</Readout>
+
+		<Readout Label="@FromLabel" Value="@FromWord">
+			<Help>@Words["ModeFromHelp"]</Help>
+		</Readout>
+
+		@if (Until is { Length: > 0 } until)
+		{
+			<Readout Label="@UntilLabel" Value="@until">
+				<Help>@Words["ModeUntilHelp"]</Help>
+			</Readout>
+		}
+
+		<div class="row wide">
+			<span class="row-label">@Words["SetMode"]</span>
+			<span class="row-ctl">
+				@* value plus @onchange rather than @bind: the chosen mode lives here until a save, so the field must
+					draw what was picked and not what the last pass answered. *@
+				<select class="cell" aria-label="@SetModeLabel" value="@Chosen" @onchange="@(changed => Choose(changed.Value?.ToString()))">
+					<option value="@Presence">@Words["FollowPresence"]</option>
+					@foreach (HeatingMode mode in HeatingModes.All)
+					{
+						<option value="@mode.ToString()">@ModeLabel(mode)</option>
+					}
+				</select>
+			</span>
+		</div>
+
+		@if (!FollowsPresence)
+		{
+			<div class="row wide">
+				<span class="row-label">
+					@Words["ModeLasts"]
+					<Info Label="@LastsLabel" Severity="InfoSeverity.Neutral">@Words["ModeLastsHelp"]</Info>
+				</span>
+				<span class="row-ctl">
+					<NumberField Value="@_hours" Label="@LastsLabel" Unit="@Hour"
+								 Min="@Shortest" Max="@Longest" Step="1" ValueChanged="@SetHours" />
+				</span>
+			</div>
+		}
+	</div>
+
+	<div class="btnrow">
+		<button type="button" class="btn primary" disabled="@(!_touched)" @onclick="Save">@Words["Save"]</button>
+	</div>
+
+	@if (Model.LastSaveWasRefused)
+	{
+		<p class="notice bad">
+			@Words["SaveRefused"]
+			<Info Label="@RefusedLabel" Severity="InfoSeverity.Bad">@Model.LastOutcome.Message</Info>
+		</p>
+	}
+</div>
+
+@code {
+	/// <summary>The selector's entry for following presence. No mode is named this, so a parse tells the two apart.</summary>
+	private const string Presence = "presence";
+
+	[Parameter, EditorRequired]
+	public SettingsPageModel Model { get; set; } = default!;
+
+	private double _hours = ModeByHand.Standard.TotalHours;
+
+	// Null until somebody picks one, so the selector draws what the last pass answered until then. It is kept
+	// after a save, because the pass that would confirm it has not run yet.
+	private string? _chosen;
+
+	private bool _touched;
+
+	private string Title => Words["ModeNowTitle"];
+
+	private string InForceLabel => Words["ModeInForce"];
+
+	private string FromLabel => Words["ModeFrom"];
+
+	private string UntilLabel => Words["ModeUntil"];
+
+	private string SetModeLabel => Words["SetMode"];
+
+	private string LastsLabel => Words["ModeLasts"];
+
+	private string RefusedLabel => Words["SaveRefused"];
+
+	private string Hour => Words["UnitHours"];
+
+	private double Shortest => ModeByHand.Shortest.TotalHours;
+
+	private double Longest => ModeByHand.Longest.TotalHours;
+
+	private bool ByHand => Model.Document.InForce.ModeFrom == ModeChosenBy.Hand;
+
+	/// <summary>The mode the last pass ran, or the words for nothing heard yet.</summary>
+	private string ModeWord =>
+		Model.Document.InForce.Mode is { } mode && Enum.TryParse(mode.Value, out HeatingMode ran)
+			? ModeLabel(ran)
+			: Words["NotToldYet"];
+
+	private string FromWord => ByHand ? Words["SetByHand"] : Words["FromPresence"];
+
+	/// <summary>When the mode in force lets go, or empty where presence is answering and nothing expires.</summary>
+	private string? Until =>
+		ByHand && Model.Document.ModeSetByHand is { } chosen
+			// The household's clock and not this process's: an add-on container runs on UTC, which drew a cabin's
+			// midnight as ten in the evening. The day as well as the time, because a mode may be held for up to a
+			// week and an hour alone cannot say which day.
+			? Household.DayAndTime(chosen.EndsAt)
+			: null;
+
+	private string Chosen => _chosen ?? Standing;
+
+	private string Standing =>
+		ByHand && Model.Document.InForce.Mode is { } mode ? mode.Value : Presence;
+
+	private bool FollowsPresence => !Enum.TryParse(Chosen, out HeatingMode _);
+
+	private string ModeLabel(HeatingMode mode) => Words[HeatingModes.KeyOf(mode)];
+
+	private void Choose(string? picked)
+	{
+		_chosen = picked;
+		_touched = true;
+	}
+
+	private void SetHours(double hours)
+	{
+		_hours = hours;
+		_touched = true;
+	}
+
+	private void Save()
+	{
+		if (Enum.TryParse(Chosen, out HeatingMode wanted) && Enum.IsDefined(wanted))
+			Model.SetModeByHand(wanted, _hours);
+		else
+			Model.FollowPresenceAgain();
+
+		if (!Model.LastSaveWasRefused)
+			_touched = false;
+	}
+}

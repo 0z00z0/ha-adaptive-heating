@@ -1,0 +1,134 @@
+@page "/"
+@page "/settings"
+@implements IDisposable
+@using AdaptiveHeating.Page.Components.Kit
+@using AdaptiveHeating.Page.Components.Settings
+@inject ISettingsStore Store
+@inject IStampSource Stamps
+@inject IStringLocalizer<AdaptiveHeating.Page.Resources.PageStrings> Words
+
+<PageTitle>@Words["PageTitle"]</PageTitle>
+
+<h1 class="sr-only">@Words["PageTitle"]</h1>
+
+@if (Model.Document.SetByHand.Count > 0)
+{
+	<p class="notice warn">
+		@Words["StandingOffThePlan"]
+		<Info Label="@HandLabel" Severity="InfoSeverity.Warn">@HandRooms</Info>
+	</p>
+}
+
+@if (Model.Document.SecondWriterSeen)
+{
+	<p class="notice bad">
+		@Words["SecondWriter"]
+		<Info Label="@SecondWriterLabel" Severity="InfoSeverity.Bad">@Words["SecondWriterHelp"]</Info>
+	</p>
+}
+
+<nav class="subnav" aria-label="@NavLabel">
+	<a href="settings?section=modes" class="@Cur(SettingsSection.Modes)"
+	   @onclick="() => Model.Show(SettingsSection.Modes)" @onclick:preventDefault="true">@Words["ModesTitle"]</a>
+	<a href="settings?section=profile" class="@Cur(SettingsSection.Profile)"
+	   @onclick="() => Model.Show(SettingsSection.Profile)" @onclick:preventDefault="true">@Words["ProfileTitle"]</a>
+	<a href="settings?section=rooms" class="@Cur(SettingsSection.Rooms)"
+	   @onclick="() => Model.Show(SettingsSection.Rooms)" @onclick:preventDefault="true">@Words["RoomsTitle"]</a>
+	<a href="settings?section=presence" class="@Cur(SettingsSection.Presence)"
+	   @onclick="() => Model.Show(SettingsSection.Presence)" @onclick:preventDefault="true">@Words["PresenceTitle"]</a>
+	<a href="settings?section=calendars" class="@Cur(SettingsSection.Calendars)"
+	   @onclick="() => Model.Show(SettingsSection.Calendars)" @onclick:preventDefault="true">@Words["CalendarsTitle"]</a>
+</nav>
+
+@if (Model.IsActive(SettingsSection.Modes))
+{
+	<ModesTab Model="@Model" />
+}
+else if (Model.IsActive(SettingsSection.Profile))
+{
+	<ProfileTab Model="@Model" />
+}
+else if (Model.IsActive(SettingsSection.Presence))
+{
+	<PresenceTab Model="@Model" />
+}
+else if (Model.IsActive(SettingsSection.Calendars))
+{
+	<CalendarsTab Model="@Model" />
+}
+else
+{
+	<RoomsTab Model="@Model" />
+}
+
+<footer class="foot">
+	<span class="foot-cell">
+		@Words["Presence"]
+		<b>@PresenceWord</b>
+		<Info Label="@PresenceLabel" Severity="InfoSeverity.Neutral">@Words["PresenceHelp"]</Info>
+	</span>
+	<span class="foot-cell">
+		@Words["AddOn"]
+		<b>@Model.Document.Versions.AddOn</b>
+	</span>
+	<span class="foot-cell">
+		@Words["Integration"]
+		<b>@IntegrationVersion</b>
+		<Info Label="@IntegrationLabel" Severity="@IntegrationSeverity">@Words["VersionsHelp"]</Info>
+	</span>
+</footer>
+
+@code {
+	private SettingsPageModel? _model;
+
+	/// <summary>Which section to open on load; read once, after which the sub-navigation owns the choice.</summary>
+	[Parameter]
+	[SupplyParameterFromQuery(Name = "section")]
+	public string? SectionQuery { get; set; }
+
+	private SettingsPageModel Model => _model!;
+
+	private string NavLabel => Words["PageTitle"];
+
+	private string HandLabel => Words["StandingOffThePlan"];
+
+	private string SecondWriterLabel => Words["SecondWriter"];
+
+	private string PresenceLabel => Words["Presence"];
+
+	private string IntegrationLabel => Words["Integration"];
+
+	private string PresenceWord =>
+		Model.Document.WritesPresence ? Words["PresenceWrites"] : Words["PresenceFollows"];
+
+	// The integration's version explains a setting somebody cannot find, so its absence is worth knowing
+	// rather than silent.
+	private string IntegrationVersion => Model.Document.Versions.Integration ?? Words["NotHeardFrom"];
+
+	private InfoSeverity IntegrationSeverity =>
+		Model.Document.Versions.Integration is null ? InfoSeverity.Warn : InfoSeverity.Neutral;
+
+	private string HandRooms => string.Join(", ", Model.Document.SetByHand.Select(room => room.Name));
+
+	private string? Cur(SettingsSection section) => Model.IsActive(section) ? "cur" : null;
+
+	/// <inheritdoc/>
+	protected override void OnInitialized()
+	{
+		_model = new SettingsPageModel(Store, Stamps);
+		_model.Changed += Redraw;
+		_model.Start(SectionQuery);
+	}
+
+	private void Redraw() => _ = InvokeAsync(StateHasChanged);
+
+	/// <inheritdoc/>
+	public void Dispose()
+	{
+		if (_model is null)
+			return;
+
+		_model.Changed -= Redraw;
+		_model.Dispose();
+	}
+}

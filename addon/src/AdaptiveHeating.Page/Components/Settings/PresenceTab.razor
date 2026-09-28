@@ -1,0 +1,150 @@
+@using AdaptiveHeating.Page.Components.Kit
+@inject IStringLocalizer<AdaptiveHeating.Page.Resources.PageStrings> Words
+
+@* One row per option of the presence dropdown, each naming the state it stands for. The option text is what
+	Home Assistant reports; the state beside it is what the heating runs on. An option the words could not tell
+	apart has no stored row, so the rows are drawn over what the dropdown offers as well. *@
+
+<div class="glass">
+	<div class="sec-h">
+		@Words["PresenceTitle"]
+		<Info Label="@Title" Severity="InfoSeverity.Neutral">@Words["PresenceMapHelp"]</Info>
+	</div>
+
+	@if (Rows.Count == 0)
+	{
+		<p class="empty">@Words["NoPresenceOptions"]</p>
+	}
+	else
+	{
+		@if (Unmapped > 0)
+		{
+			<p class="notice warn">
+				@Words["UnmappedOptions"]
+				<b>@Unmapped</b>
+				<Info Label="@UnmappedLabel" Severity="InfoSeverity.Warn">@Words["UnmappedOptionsHelp"]</Info>
+			</p>
+		}
+
+		<div class="rows">
+			@foreach (PresenceRow row in Rows)
+			{
+				PresenceRow captured = row;
+
+				<div class="row wide">
+					<span class="row-label">@captured.Value</span>
+					<span class="row-ctl">
+						@* value plus @onchange rather than @bind: the chosen state lives in the edit table until
+							a save, so the field must draw what was typed and not what is stored. *@
+						<select class="cell" aria-label="@captured.Value" value="@Picked(captured)"
+								@onchange="@(changed => Choose(captured.Value, changed.Value?.ToString()))">
+							<option value="@Nothing">@Words["NotMapped"]</option>
+							@foreach (PresenceState state in PresenceStates.Mappable)
+							{
+								<option value="@state.ToString()">@StateLabel(state)</option>
+							}
+						</select>
+					</span>
+				</div>
+			}
+		</div>
+
+		<div class="btnrow">
+			<button type="button" class="btn primary" disabled="@(_edited.Count == 0)" @onclick="Save">@Words["Save"]</button>
+		</div>
+
+		@if (Model.LastSaveWasRefused)
+		{
+			<p class="notice bad">
+				@Words["SaveRefused"]
+				<Info Label="@RefusedLabel" Severity="InfoSeverity.Bad">@Model.LastOutcome.Message</Info>
+			</p>
+		}
+	}
+</div>
+
+@code {
+	/// <summary>The entry for a row standing for nothing. No state is named this, so a parse tells the two apart.</summary>
+	private const string Nothing = "";
+
+	/// <summary>One option of the dropdown and the state it stands for, or none where no row names it.</summary>
+	private sealed record PresenceRow(string Value, PresenceState? State);
+
+	[Parameter, EditorRequired]
+	public SettingsPageModel Model { get; set; } = default!;
+
+	// Keyed on the option text the row carries, so an edit follows the row it was made on. A null value is a row
+	// a person has taken the mapping off.
+	private readonly Dictionary<string, PresenceState?> _edited = new(StringComparer.OrdinalIgnoreCase);
+
+	private string Title => Words["PresenceTitle"];
+
+	private string RefusedLabel => Words["SaveRefused"];
+
+	private string UnmappedLabel => Words["UnmappedOptions"];
+
+	/// <summary>
+	/// Every option the dropdown offers, then any stored row it no longer offers. A helper whose options the
+	/// vocabulary could not tell apart has no stored row at all, and is only editable because of the first half.
+	/// </summary>
+	private IReadOnlyList<PresenceRow> Rows
+	{
+		get
+		{
+			PresenceMap stored = Model.Document.Presence;
+			List<PresenceRow> rows = [];
+			HashSet<string> drawn = new(StringComparer.OrdinalIgnoreCase);
+
+			foreach (string offered in Model.Document.PresenceOptionsOffered)
+			{
+				if (offered?.Trim() is { Length: > 0 } text && drawn.Add(text))
+					rows.Add(new PresenceRow(text, stored.StateFor(text)));
+			}
+
+			// A row whose option the dropdown has stopped offering stays editable: it is what a rename in Home
+			// Assistant leaves behind, and dropping it from the page would leave nothing to correct.
+			foreach (PresenceOption option in stored.Options ?? [])
+			{
+				if (option.Value?.Trim() is { Length: > 0 } text && drawn.Add(text))
+					rows.Add(new PresenceRow(text, option.State));
+			}
+
+			return rows;
+		}
+	}
+
+	private int Unmapped => Rows.Count(row => Picked(row) == Nothing);
+
+	private string StateLabel(PresenceState state) => Words[PresenceStates.KeyOf(state)];
+
+	/// <summary>What the row's field draws: what was picked on this page, else what is stored, else nothing.</summary>
+	private string Picked(PresenceRow row)
+	{
+		if (_edited.TryGetValue(row.Value, out PresenceState? edited))
+			return edited?.ToString() ?? Nothing;
+
+		return row.State?.ToString() ?? Nothing;
+	}
+
+	private void Choose(string value, string? state) =>
+		_edited[value] = Enum.TryParse(state, out PresenceState wanted) && Enum.IsDefined(wanted) ? wanted : null;
+
+	private void Save()
+	{
+		// Only the rows standing for something are written. An option nobody has mapped is left unmapped rather
+		// than guessed at, which is the whole reason a person is doing this.
+		PresenceMap map = PresenceMap.Of(
+			Rows
+				.Select(row => new { row.Value, State = Chosen(row) })
+				.Where(row => row.State is not null)
+				.Select(row => new PresenceOption(row.Value, row.State!.Value)));
+
+		Model.SavePresenceMap(map);
+
+		if (!Model.LastSaveWasRefused)
+			_edited.Clear();
+	}
+
+	private PresenceState? Chosen(PresenceRow row) =>
+		_edited.TryGetValue(row.Value, out PresenceState? edited) ? edited : row.State;
+}

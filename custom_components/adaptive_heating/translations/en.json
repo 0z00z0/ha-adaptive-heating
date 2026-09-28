@@ -1,0 +1,147 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add a room",
+        "description": "A room needs at least one heater. Without temperature sensors of its own it borrows a neighbour's reading.",
+        "data": {
+          "room": "Room name",
+          "heaters": "Heaters",
+          "temperature_sensors": "Temperature sensors",
+          "neighbour": "Borrow the reading from",
+          "window_sensor": "Window sensor",
+          "outdoor_sensor": "Outdoor sensor",
+          "power_sensor": "Power meter"
+        },
+        "data_description": {
+          "heaters": "Every switch this room heats with. One loop runs per heater.",
+          "temperature_sensors": "The room's own sensors. The reading is their average.",
+          "neighbour": "Used only where the room has no sensor of its own.",
+          "window_sensor": "Heating stops while this says open.",
+          "outdoor_sensor": "Sets how hard the room fires while it holds.",
+          "power_sensor": "Confirms the heater actually ran. A room without one behaves exactly as this one does."
+        }
+      }
+    },
+    "error": {
+      "no_heater": "A room needs at least one heater.",
+      "heater_taken": "{room} already drives that heater."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Change the room",
+        "data": {
+          "room": "Room name",
+          "heaters": "Heaters",
+          "temperature_sensors": "Temperature sensors",
+          "neighbour": "Borrow the reading from",
+          "window_sensor": "Window sensor",
+          "outdoor_sensor": "Outdoor sensor",
+          "power_sensor": "Power meter"
+        }
+      }
+    },
+    "error": {
+      "no_heater": "A room needs at least one heater.",
+      "heater_taken": "{room} already drives that heater."
+    }
+  },
+  "selector": {
+    "holding_behaviour": {
+      "options": {
+        "paced": "Paced",
+        "band": "Plain band"
+      }
+    },
+    "switched": {
+      "options": {
+        "on": "On",
+        "off": "Off"
+      }
+    }
+  },
+  "services": {
+    "warm_room_by": {
+      "name": "Warm the room to a temperature by a time",
+      "description": "Starts the room early enough to be at the temperature by the time given, and runs at full output until it is there.",
+      "fields": {
+        "temperature": {
+          "name": "Temperature",
+          "description": "The temperature the room is to reach."
+        },
+        "by_time": {
+          "name": "Wanted by",
+          "description": "When the room is to be at that temperature. A time alone means the next time it comes round."
+        }
+      }
+    },
+    "hold_temperature": {
+      "name": "Hold the room at a temperature until it expires",
+      "description": "Holds the temperature for the time given, then falls back to the room's target.",
+      "fields": {
+        "temperature": {
+          "name": "Temperature",
+          "description": "The temperature to hold."
+        },
+        "duration": {
+          "name": "How long",
+          "description": "How long the hold lasts."
+        }
+      }
+    },
+    "set_warming_rate": {
+      "name": "Set how fast the room warms",
+      "description": "The rate the room works backwards from when it is given a deadline.",
+      "fields": {
+        "degrees_per_hour": {
+          "name": "Degrees per hour",
+          "description": "How fast the room rises."
+        },
+        "measured_at_outdoor": {
+          "name": "Measured at",
+          "description": "The outdoor temperature that rate was measured at."
+        }
+      }
+    },
+    "set_regulation": {
+      "name": "Set how the room is regulated",
+      "description": "The numbers the room's loop runs on until it is given others.",
+      "fields": {
+        "behaviour": {
+          "name": "Holding behaviour",
+          "description": "Paced runs a fraction of each cycle. A plain band switches at the edges."
+        },
+        "band": {
+          "name": "Band",
+          "description": "How far the room may drift either side of its target. Setting it locks it."
+        },
+        "outdoor_shift_per_degree": {
+          "name": "Outdoor shift",
+          "description": "Extra output per degree the target sits above the outdoor temperature."
+        },
+        "cycle_length": {
+          "name": "Cycle length",
+          "description": "How long one paced cycle lasts."
+        },
+        "full_output_below": {
+          "name": "Full output below",
+          "description": "How far below target the room runs flat out."
+        },
+        "shortest_time_between_relay_changes": {
+          "name": "Shortest time between relay changes",
+          "description": "Protects the relay's contacts. It overrides the band."
+        },
+        "switched": {
+          "name": "Switched",
+          "description": "On or off for a room with no temperature reading. Its own dial holds the temperature."
+        }
+      }
+    },
+    "return_to_target": {
+      "name": "Return the room to its target",
+      "description": "Ends any warm-up and any timed hold. The room holds the temperature it was last set."
+    }
+  }
+}

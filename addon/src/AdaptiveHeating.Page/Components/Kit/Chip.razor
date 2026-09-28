@@ -1,0 +1,14 @@
+<span class="@CssClass">@Word</span>
+
+@code {
+	/// <summary>The state family: heat, hold, hand, idle or ok — a CSS <c>st-*</c> suffix, nothing derived here.</summary>
+	[Parameter, EditorRequired]
+	public string Kind { get; set; } = "";
+
+	[Parameter, EditorRequired]
+	public string Word { get; set; } = "";
+
+	// A single expression: an implicit expression immediately followed by an explicit one, with no literal
+	// text between them, is not reliably parsed inside an HTML attribute value.
+	private string CssClass => $"chip st-{Kind}";
+}

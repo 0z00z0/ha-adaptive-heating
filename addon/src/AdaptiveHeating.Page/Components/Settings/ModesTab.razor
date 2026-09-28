@@ -1,0 +1,123 @@
+@using AdaptiveHeating.Page.Components.Kit
+@inject IStringLocalizer<AdaptiveHeating.Page.Resources.PageStrings> Words
+
+@* The mode in force and the control that sets it, then one row per room and one column per mode. Each cell is
+	that room's temperature for that mode; saving writes the room's own row and nothing else. *@
+
+<SetsTheMode Model="@Model" />
+
+<div class="glass">
+	<div class="sec-h">
+		@Words["ModesTitle"]
+		<Info Label="@Title" Severity="InfoSeverity.Neutral">@Words["ModesHelp"]</Info>
+	</div>
+
+	@if (Model.Document.Rooms.Count == 0)
+	{
+		<p class="empty">@Words["NoRooms"]</p>
+	}
+	else
+	{
+		<div class="modetable">
+			<div class="mt-head">
+				<span>@Words["Room"]</span>
+				@foreach (HeatingMode mode in HeatingModes.All)
+				{
+					<span>
+						@ModeLabel(mode)
+						@if (mode == HeatingMode.Away)
+						{
+							<Info Label="@AwayLabel" Severity="InfoSeverity.Warn">@Words["AwayIsFrost"]</Info>
+						}
+					</span>
+				}
+				@* Empty rather than sr-only: an absolutely positioned cell leaves no track behind it, and every
+					row below then shifts a column. *@
+				<span aria-hidden="true"></span>
+			</div>
+
+			@foreach (RoomSlice room in Model.Document.Rooms)
+			{
+				RoomSlice capturedRoom = room;
+
+				<div class="mt-row">
+					<span class="mt-room">
+						@room.Name
+						@if (room.StandsOffThePlan)
+						{
+							<Chip Kind="hand" Word="@HandWord" />
+						}
+					</span>
+
+					@foreach (HeatingMode mode in HeatingModes.All)
+					{
+						HeatingMode capturedMode = mode;
+
+						@* data-mode is what the phone layout draws as each field's label; the column heading it
+							belongs to is hidden at that width. *@
+						<span class="mt-cell" data-mode="@ModeLabel(capturedMode)">
+							<NumberField Value="@Edited(capturedRoom, capturedMode)"
+									 Label="@($"{capturedRoom.Name} {ModeLabel(capturedMode)}")"
+									 ValueChanged="@(value => Edit(capturedRoom.Id, capturedMode, value))" />
+						</span>
+					}
+
+					<span class="mt-save">
+						<button type="button" class="btn primary" disabled="@(!HasEdits(capturedRoom.Id))"
+								@onclick="() => Save(capturedRoom)">@Words["Save"]</button>
+					</span>
+				</div>
+			}
+		</div>
+
+		@if (Model.LastSaveWasRefused)
+		{
+			<p class="notice bad">
+				@Words["SaveRefused"]
+				<Info Label="@RefusedLabel" Severity="InfoSeverity.Bad">@Model.LastOutcome.Message</Info>
+			</p>
+		}
+	}
+</div>
+
+@code {
+	[Parameter, EditorRequired]
+	public SettingsPageModel Model { get; set; } = default!;
+
+	// Keyed on room and mode, so an edit in one room never carries into another's row and a save clears only
+	// the row it wrote.
+	private readonly Dictionary<(string Room, HeatingMode Mode), double> _edited = [];
+
+	private string Title => Words["ModesTitle"];
+
+	private string AwayLabel => Words["ModeAway"];
+
+	private string HandWord => Words["SetByHand"];
+
+	private string RefusedLabel => Words["SaveRefused"];
+
+	private string ModeLabel(HeatingMode mode) => Words[HeatingModes.KeyOf(mode)];
+
+	private double Edited(RoomSlice room, HeatingMode mode) =>
+		_edited.TryGetValue((room.Id, mode), out double typed) ? typed : room.TemperatureFor(mode);
+
+	private bool HasEdits(string roomId) => _edited.Keys.Any(key => key.Room == roomId);
+
+	private void Edit(string roomId, HeatingMode mode, double value) => _edited[(roomId, mode)] = value;
+
+	private void Save(RoomSlice room)
+	{
+		Dictionary<HeatingMode, double> row = [];
+
+		foreach (HeatingMode mode in HeatingModes.All)
+			row[mode] = Edited(room, mode);
+
+		Model.SaveModeTemperatures(room.Id, row);
+
+		if (Model.LastSaveWasRefused)
+			return;
+
+		foreach (HeatingMode mode in HeatingModes.All)
+			_edited.Remove((room.Id, mode));
+	}
+}

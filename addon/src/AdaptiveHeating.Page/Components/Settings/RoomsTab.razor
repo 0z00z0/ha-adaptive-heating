@@ -1,0 +1,274 @@
+@using AdaptiveHeating.Page.Components.Kit
+@using AdaptiveHeating.Planner
+@inject IStringLocalizer<AdaptiveHeating.Page.Resources.PageStrings> Words
+@inject TheHouseholdClock Household
+
+@* One fold per room: what its sensors are held to, and the three numbers the system works out for it. *@
+
+<div class="glass">
+	<div class="sec-h">
+		@Words["RoomsTitle"]
+		<Info Label="@Title" Severity="InfoSeverity.Neutral">@Words["RoomsHelp"]</Info>
+	</div>
+
+	@if (Model.Document.Rooms.Count == 0)
+	{
+		<p class="empty">@Words["NoRooms"]</p>
+	}
+	else
+	{
+		@foreach (RoomSlice room in Model.Document.Rooms)
+		{
+			RoomSlice captured = room;
+
+			<Fold Id="@($"room-{captured.Id}")"
+				  Title="@captured.Name"
+				  Summary="@Summary(captured)"
+				  BangKind="@BangFor(captured)"
+				  BangTitle="@BangTitleFor(captured)"
+				  Open="@(Model.OpenRoomId == captured.Id)"
+				  OpenChanged="@(open => Model.ToggleRoom(captured.Id, open))">
+
+				<div class="tail-lab">@Words["Now"]</div>
+				@if (Model.Document.NowFor(captured.Id) is { } reading)
+				{
+					<div class="rows">
+						<Readout Label="@ReadsLabel" Value="@Reads(reading)"
+								 Severity="@(reading.Temperature is null ? InfoSeverity.Warn : InfoSeverity.Neutral)">
+							<Help>@Words["ReadsHelp"]</Help>
+						</Readout>
+
+						<Readout Label="@HoldsLabel" Value="@InvariantNumber.Degrees(reading.Target)">
+							<ChildContent>
+								<Chip Kind="@(reading.HeatingNow ? "heat" : "idle")"
+									  Word="@(reading.HeatingNow ? HeatingWord : IdleWord)" />
+							</ChildContent>
+						</Readout>
+
+						<Readout Label="@ToldLabel" Value="@Told(captured)">
+							<Help>@Words["ToldHelp"]</Help>
+						</Readout>
+
+						<Readout Label="@SeenLabel" Value="@Clock(reading.ReadAt)" />
+					</div>
+				}
+				else
+				{
+					<p class="empty">@Words["NotHeardFrom"]</p>
+				}
+
+				<div class="tail-lab">@Words["Sensors"]</div>
+				<div class="rows">
+					<Row Label="@FreshLabel" Value="@Hours(captured.Sensors.FreshWindow)">
+						<Help>@Words["FreshHelp"]</Help>
+						<ChildContent>
+							<NumberField Value="@captured.Sensors.FreshWindow.TotalHours" Label="@FreshLabel"
+									 Unit="@HoursUnit" Min="0.25" Max="24" Step="0.25"
+									 ValueChanged="@(value => SetFresh(captured, value))" />
+						</ChildContent>
+					</Row>
+
+					<Row Label="@StuckLabel" Value="@Hours(captured.Sensors.StuckWindow)">
+						<Help>@Words["StuckHelp"]</Help>
+						<ChildContent>
+							<NumberField Value="@captured.Sensors.StuckWindow.TotalHours" Label="@StuckLabel"
+									 Unit="@HoursUnit" Min="1" Max="48" Step="1"
+									 ValueChanged="@(value => SetStuck(captured, value))" />
+						</ChildContent>
+					</Row>
+
+					<Row Label="@SpreadLabel" Value="@InvariantNumber.Degrees(captured.Sensors.Spread)">
+						<Help>@Words["SpreadHelp"]</Help>
+						<ChildContent>
+							<NumberField Value="@captured.Sensors.Spread" Label="@SpreadLabel"
+									 Min="0.5" Max="10" Step="0.5"
+									 ValueChanged="@(value => SetSpread(captured, value))" />
+						</ChildContent>
+					</Row>
+
+					<Row Label="@WindowLabel" Value="@Minutes(captured.Sensors.WindowDelay)">
+						<Help>@Words["WindowDelayHelp"]</Help>
+						<ChildContent>
+							<NumberField Value="@captured.Sensors.WindowDelay.TotalMinutes" Label="@WindowLabel"
+									 Unit="@MinutesUnit" Min="0" Max="60" Step="1"
+									 ValueChanged="@(value => SetWindowDelay(captured, value))" />
+						</ChildContent>
+					</Row>
+
+					@if (captured.Borrows)
+					{
+						<Row Label="@BorrowsLabel" Value="@LenderName(captured)"
+							 Severity="InfoSeverity.Warn" IsWide="true">
+							<Help>@Words["BorrowsHelp"]</Help>
+							<ChildContent>
+								<span class="hint">@Words["BorrowsNote"]</span>
+							</ChildContent>
+						</Row>
+					}
+				</div>
+
+				<div class="tail-lab">@Words["Learnt"]</div>
+				<div class="rows">
+					@foreach (Learnt entry in Numbers(captured))
+					{
+						Learnt capturedEntry = entry;
+						LearntKind capturedKind = entry.Kind;
+						LearntNumber capturedNumber = entry.Number;
+						string unit = entry.Unit;
+
+						<Row Label="@LearntLabel(capturedKind)"
+							 Value="@LearntValue(capturedNumber, unit)"
+							 Severity="@(capturedNumber.Measured ? InfoSeverity.Neutral : InfoSeverity.Warn)"
+							 IsWide="true">
+							<Help>
+								@RestingOn(capturedNumber)
+								@LearntHelp(capturedKind)
+							</Help>
+							<ChildContent>
+								@if (capturedNumber.LockedByAPerson)
+								{
+									<Chip Kind="hand" Word="@LockedWord" />
+									<button type="button" class="btn"
+											@onclick="() => Model.SetLearntByHand(captured.Id, capturedKind, null)">@Words["Unlock"]</button>
+								}
+								else
+								{
+									<NumberField Value="@capturedNumber.Value" Label="@LearntLabel(capturedKind)"
+											 Unit="@unit" Min="0" Max="@capturedEntry.Max" Step="null"
+											 ValueChanged="@(value => Model.SetLearntByHand(captured.Id, capturedKind, value))" />
+								}
+								<button type="button" class="btn danger"
+										@onclick="() => Model.ResetLearnt(captured.Id, capturedKind)">@Words["Reset"]</button>
+							</ChildContent>
+						</Row>
+					}
+				</div>
+			</Fold>
+		}
+	}
+</div>
+
+@code {
+	[Parameter, EditorRequired]
+	public SettingsPageModel Model { get; set; } = default!;
+
+	private string Title => Words["RoomsTitle"];
+
+	private string FreshLabel => Words["FreshWindow"];
+
+	private string StuckLabel => Words["StuckWindow"];
+
+	private string SpreadLabel => Words["Spread"];
+
+	private string WindowLabel => Words["WindowDelay"];
+
+	private string BorrowsLabel => Words["Borrows"];
+
+	private string LockedWord => Words["Locked"];
+
+	private string ReadsLabel => Words["Reads"];
+
+	private string HoldsLabel => Words["Holds"];
+
+	private string ToldLabel => Words["Told"];
+
+	private string SeenLabel => Words["Seen"];
+
+	private string HeatingWord => Words["Heating"];
+
+	private string IdleWord => Words["Idle"];
+
+	private string HoursUnit => Words["UnitHours"];
+
+	private string MinutesUnit => Words["UnitMinutes"];
+
+	private string Hours(TimeSpan span) => $"{InvariantNumber.Format(span.TotalHours, 2)} {HoursUnit}";
+
+	private string Minutes(TimeSpan span) => $"{InvariantNumber.Format(span.TotalMinutes, 0)} {MinutesUnit}";
+
+	// A room with no reading at all says so rather than showing a number it does not have.
+	private string Reads(RoomNow reading) =>
+		reading.Temperature is { } temperature ? InvariantNumber.Degrees(temperature) : Words["NoReading"];
+
+	// What the add-on is telling the room, which is not always what the room is holding: a warm-up or a hold
+	// running in the room wins, and a temperature set at the card stands until something replaces it.
+	private string Told(RoomSlice room) =>
+		Model.Document.ToldFor(room.Id) is { } told ? InvariantNumber.Degrees(told.Value) : Words["NotToldYet"];
+
+	// The household's clock, which is what a person reading the page is looking at. Short: the date is not worth
+	// a line here, because a reading this old would already have gone stale another way.
+	private string Clock(DateTimeOffset at) => Household.TimeOfDay(at);
+
+	// A room's fold says the one thing worth reading collapsed: whether it is standing off the plan.
+	private string Summary(RoomSlice room) =>
+		room.StandsOffThePlan ? Words["SetByHand"] : InvariantNumber.Degrees(room.TemperatureFor(HeatingMode.Home));
+
+	// The name a person calls it, not the identifier both halves name it by: nobody reads an entity id as a room.
+	private string LenderName(RoomSlice room)
+	{
+		if (room.Sensors.BorrowsFrom is not { Length: > 0 } lender)
+			return "";
+
+		return Model.Document.Rooms.FirstOrDefault(other => other.Id == lender)?.Name ?? lender;
+	}
+
+	private static string? BangFor(RoomSlice room) => room.Borrows ? "warn" : null;
+
+	// .Value, not the implicit conversion: a null branch would make the whole expression a nullable
+	// LocalizedString and hand null to that operator.
+	private string? BangTitleFor(RoomSlice room) => room.Borrows ? Words["Borrows"].Value : null;
+
+	/// <summary>One learnt number as the page draws it, with the ceiling its own scale needs.</summary>
+	private sealed record Learnt(LearntKind Kind, LearntNumber Number, string Unit, double Max);
+
+	// None of the three declares a step. All three are fitted from measurements and land wherever the fit puts
+	// them: the outdoor term is thousandths of full output per degree, and a step of a thousandth made the
+	// browser mark a fitted 0.0072 invalid and snap it off with the arrows.
+	private IEnumerable<Learnt> Numbers(RoomSlice room) =>
+	[
+		new(LearntKind.WarmingRate, room.Learnt.WarmingRate, Words["UnitDegreesPerHour"], 20),
+		new(LearntKind.OutdoorTerm, room.Learnt.OutdoorTerm, Words["UnitPerDegree"], 0.5),
+		new(LearntKind.Band, room.Learnt.Band, "°C", 5)
+	];
+
+	private string LearntLabel(LearntKind kind) => kind switch
+	{
+		LearntKind.WarmingRate => Words["WarmingRate"],
+		LearntKind.OutdoorTerm => Words["OutdoorTerm"],
+		_ => Words["Band"]
+	};
+
+	private RenderFragment LearntHelp(LearntKind kind) => builder =>
+	{
+		string key = kind switch
+		{
+			LearntKind.WarmingRate => "WarmingRateHelp",
+			LearntKind.OutdoorTerm => "OutdoorTermHelp",
+			_ => "BandHelp"
+		};
+
+		builder.AddContent(0, Words[key].Value);
+	};
+
+	// A number resting on no measurements says so instead of showing a confident figure.
+	private string LearntValue(LearntNumber number, string unit) =>
+		number.Measured ? $"{InvariantNumber.Format(number.Value, 3)} {unit}" : Words["NotMeasured"];
+
+	private RenderFragment RestingOn(LearntNumber number) => builder =>
+		builder.AddContent(0, string.Format(
+			System.Globalization.CultureInfo.CurrentCulture,
+			Words["RestingOn"].Value,
+			number.MeasurementCount));
+
+	private void SetFresh(RoomSlice room, double hours) =>
+		Model.SaveSensorSettings(room.Id, room.Sensors with { FreshWindow = TimeSpan.FromHours(hours) });
+
+	private void SetStuck(RoomSlice room, double hours) =>
+		Model.SaveSensorSettings(room.Id, room.Sensors with { StuckWindow = TimeSpan.FromHours(hours) });
+
+	private void SetSpread(RoomSlice room, double degrees) =>
+		Model.SaveSensorSettings(room.Id, room.Sensors with { Spread = degrees });
+
+	private void SetWindowDelay(RoomSlice room, double minutes) =>
+		Model.SaveSensorSettings(room.Id, room.Sensors with { WindowDelay = TimeSpan.FromMinutes(minutes) });
+}

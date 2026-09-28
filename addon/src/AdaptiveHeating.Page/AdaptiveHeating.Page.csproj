@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+	<PropertyGroup>
+		<RootNamespace>AdaptiveHeating.Page</RootNamespace>
+		<Description>The heating settings page: the components, the colour tokens, the light-and-dark script and the base address the page resolves per request. A Razor Class Library with no host of its own, so the add-on and the render host both serve the same markup.</Description>
+		<AddRazorSupportForMvc>true</AddRazorSupportForMvc>
+		<GenerateDocumentationFile>false</GenerateDocumentationFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<FrameworkReference Include="Microsoft.AspNetCore.App" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- Stamp, Stamped and LearntNumber come from the planner, so the page never keeps a second copy of them. -->
+		<ProjectReference Include="..\AdaptiveHeating.Planner\AdaptiveHeating.Planner.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<EmbeddedResource Update="Resources\PageStrings.resx">
+			<Generator></Generator>
+		</EmbeddedResource>
+	</ItemGroup>
+
+</Project>
