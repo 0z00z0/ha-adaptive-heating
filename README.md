@@ -4,25 +4,18 @@ Room-by-room heating for Home Assistant. Each room gets a thermostat of its own,
 it in time for the moment it is wanted.
 
 [![HACS custom repository](https://img.shields.io/badge/HACS-custom%20repository-41BDF5.svg)](https://hacs.xyz/)
-[![Home Assistant add-on](https://img.shields.io/badge/Home%20Assistant-add--on-41BDF5.svg)](https://www.home-assistant.io/addons/)
+[![Home Assistant add-on](https://img.shields.io/badge/Home%20Assistant-add--on-41BDF5.svg)](https://www.home-assistant.io/apps/)
 [![Licence MIT](https://img.shields.io/badge/licence-MIT-informational.svg)](LICENSE)
 
 ![The settings page, showing what each mode is worth in each room](docs/images/settings-page-modes.png)
 
-The rooms and figures above are a made-up cabin from the render host in `addon/tools/pagehost`, not a
-live house.
-
-## Two halves
-
-| Half | Runs | Carries |
-|---|---|---|
-| Integration | Inside Home Assistant | A thermostat per room, the control loop, and five actions |
-| Add-on | Beside Home Assistant | Modes, the day's profile, warm-up planning, learning and the settings page |
-
-The integration works on its own. The add-on drives the thermostats the integration creates, so
-install the integration first.
+The rooms and figures above are an example, not a live house.
 
 ## What it does
+
+Two halves. The integration gives each room a thermostat and runs the heating. The add-on holds the
+modes, the day's plan and the settings page. Install the integration first: the add-on drives the
+thermostats the integration creates.
 
 The integration:
 
@@ -30,7 +23,7 @@ The integration:
 - Lets a room with no sensor of its own borrow a neighbouring room's reading.
 - Stops heating while a window sensor says open.
 - Refuses a heater another room already drives.
-- Uses a power meter, where a room has one, to confirm a heater actually ran.
+- Confirms a heater actually ran, in a room with a power meter.
 - Offers five actions to automations: `warm_room_by`, `hold_temperature`, `set_warming_rate`,
   `set_regulation` and `return_to_target`.
 
@@ -41,46 +34,53 @@ The add-on:
 - Starts a warm-up early enough for a room to reach its temperature by a set time.
 - Measures each room's warming rate and how hard it must fire to hold, and writes both back.
 - Reads whether anybody is home from one Home Assistant dropdown.
-- Warms the house ahead of an arrival in a calendar, and writes each warm-up to a second calendar as a
-  record.
+- Warms the house ahead of an arrival in a calendar, and writes each finished warm-up to a second
+  calendar as a record.
 
 ## Installing the integration
 
-Through HACS, as a custom repository.
+HACS has to be installed first. [hacs.xyz](https://hacs.xyz/) says how.
 
 [![Open HACS and add this repository](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=0z00z0&repository=ha-adaptive-heating&category=integration)
 
-That link opens HACS with the repository filled in. To do it by hand instead: open HACS, choose
-**Custom repositories** from the menu in the top right, paste `https://github.com/0z00z0/ha-adaptive-heating`,
-pick **Integration** as the type, and add it.
+The badge opens HACS with the repository filled in. Steps 1 and 2 do the same by hand.
 
-Then:
+1. Open HACS and choose **Custom repositories** from the menu in the top right.
+2. Paste `https://github.com/0z00z0/ha-adaptive-heating`, pick **Integration** as the type, and select
+   **Add**. Close the dialog.
+3. Search HACS for **Adaptive Heating** and open it.
+4. Select **Download**.
+5. Restart Home Assistant. The integration is not available until the restart finishes.
+6. Go to **Settings → Devices and services → Add integration** and pick **Adaptive Heating**.
+7. Fill in the dialog and submit it. That adds one room, which appears as a `climate` entity named
+   after it.
 
-1. Open **Adaptive Heating** in HACS and download it.
-2. Restart Home Assistant. The integration is not available until the restart finishes.
-3. Go to **Settings → Devices and services → Add integration** and pick **Adaptive Heating**.
-
-Step 3 opens the dialog that adds one room. Repeat it per room.
+Repeat steps 6 and 7 for every further room.
 
 ## Installing the add-on
 
+The add-on needs the Supervisor. A Home Assistant Container install has no app store and cannot run it.
+
 [![Add this add-on repository](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2F0z00z0%2Fha-adaptive-heating)
 
-That link opens the add-on store with the repository filled in. To do it by hand instead: go to
-**Settings → Add-ons → Add-on store**, choose **Repositories** from the menu in the top right, and
-paste `https://github.com/0z00z0/ha-adaptive-heating`.
+The badge opens the store with the repository filled in. Steps 1 and 2 do the same by hand.
 
-The manifest names no image, so the Supervisor builds the add-on on the box at install. That takes
-about a minute on a small Intel processor, and over thirty minutes on a Raspberry Pi 3B+.
-
-Once installed, reload the store, open **Adaptive heating** and start it. Two switches are off on a
-fresh install whatever the manifest asks for, and both are worth turning on:
-
-- **Watchdog**, which restarts the add-on when its page stops answering.
-- **Show in sidebar**, which is how the settings page is reached.
-
-The add-on's own configuration tab takes three entities: the presence dropdown, the outdoor
-temperature sensors, and a weather forecast to fall back on when every outdoor sensor is out.
+1. Go to **Settings → Apps** and select **Install app**. Home Assistant calls the same two things
+   **Add-ons** and **Add-on store** on an older install.
+2. Choose **Repositories** from the menu in the top right, paste
+   `https://github.com/0z00z0/ha-adaptive-heating`, select **Add**, and close the dialog.
+3. Reload the store page. A card for this repository appears, holding **Adaptive heating**. Open it.
+4. Select **Install**. The Supervisor builds the add-on on the box rather than pulling a ready-made
+   image, so the install is not instant.
+5. Open the **Configuration** tab and name the presence dropdown, the outdoor temperature sensors, and
+   a weather entity to fall back on when every outdoor sensor is out. All three are optional. Save. The
+   presence dropdown is any entity offering a list of options, usually an `input_select` helper. Create
+   one under **Settings → Devices and services → Helpers** first.
+6. Back on the **Info** tab, turn on **Show in sidebar** and **Watchdog**. Both start off. The sidebar
+   entry is the only way to the settings page, and the watchdog restarts the add-on when its page
+   stops answering.
+7. Select **Start**.
+8. Open **Heating** in the sidebar. The page is for administrator accounts only.
 
 ## Setting it up
 
@@ -88,75 +88,44 @@ temperature sensors, and a weather forecast to fall back on when every outdoor s
 runs per heater. Everything else in the dialog is optional: the room's own temperature sensors, a
 neighbour to borrow a reading from, a window sensor, an outdoor sensor and a power meter.
 
-**Type a temperature against each mode before expecting one to hold.** The mode table starts empty, and
-a room whose mode carries no temperature keeps whatever target it already had. Fill the table on the
-settings page, room by room.
+**Type a temperature against each mode before expecting one to hold.** The mode table on the **Modes**
+tab starts empty, and a room whose mode carries no temperature keeps whatever target it already had.
+Fill the table room by room.
 
-**Map the presence dropdown.** The add-on reads whether anybody is home from one Home Assistant
-dropdown, and what each of its options means is stored as one row per option. A first pass reads the
-option text and seeds those rows from a vocabulary of English and Norwegian words. That reading happens
-once, at set-up, and never again, so an option renamed later keeps the state it was mapped to.
+A room set up with no sensor of its own and no neighbour to borrow from is switched on and off
+instead. Its away cell starts on and every other cell off, because the dial on the heater is the only
+frost protection such a room has.
 
-Check the seeded rows on the **Presence options** tab. Three states carry no word in the vocabulary —
-planned to arrive, on the way, and temporarily away — so an option meaning one of those lands on the
-wrong row and has to be corrected by hand. A dropdown the add-on cannot tell apart is left unmapped
-altogether, and an unmapped dropdown reads as somebody being home, which is the expensive answer.
+**Check the presence rows.** The add-on reads whether anybody is home from one Home Assistant
+dropdown, and one row per option says what that option means. The rows are seeded once, at set-up,
+from the option text, against a vocabulary of English and Norwegian words. An option renamed later
+keeps the state it was mapped to, so change the text on the **Presence options** tab to match.
 
-**Two calendars, both optional.** One holds arrivals: an entry with a start time warms every room to
-its home temperature in time for it, and an all-day entry is skipped. The other holds the record, and
-must be a calendar Home Assistant keeps itself, because each warm-up is written there as an entry.
+Three states carry no word in the vocabulary — planned to arrive, on the way, and temporarily away —
+so an option meaning one of those lands on the wrong row and has to be put right by hand. An option
+the words cannot place is left unmapped, and an unmapped option reads as somebody being home, which is
+the expensive answer.
+
+**Two calendars, both optional**, on the **Calendars** tab. One holds arrivals: an entry with a start
+time warms every room to its home temperature in time for it, and an all-day entry is skipped. Any
+calendar will do. The other holds the record, one entry per finished warm-up, and must be a calendar
+Home Assistant keeps itself.
 
 ## Requirements
 
-The integration needs Home Assistant and nothing else. **No lower version bound has been established.**
-It has run on core 2026.9.1 and on core 2026.9.3.
+| What | Value |
+|---|---|
+| Home Assistant core | Tested on 2026.9.3 |
+| Supervisor, for the add-on | Tested at 2026.09.3 |
+| Board, for the add-on | `aarch64` or `amd64`. A 32-bit board is not covered |
+| HACS, for the integration | Any version that takes a custom repository |
 
-The add-on needs a Home Assistant installation with the Supervisor, on `aarch64` or `amd64`. A 32-bit
-board is not covered. It has run at Supervisor 2026.09.3 on `amd64`.
-
-## Working on the source
-
-Needed: the .NET 10 SDK, Python 3.13 or newer, and git.
-
-The C# half, from `addon/`:
-
-    dotnet build AdaptiveHeating.slnx
-    dotnet test AdaptiveHeating.slnx
-
-The Python half, from the repository root:
-
-    python -m unittest discover -s tests
-
-Those tests import nothing from Home Assistant, so they run on any machine with a Python interpreter.
-`pytest` runs the same files where it is available. One file, `tests/test_against_home_assistant.py`,
-does need Home Assistant and skips itself where it is absent.
-
-To look at the settings page without Home Assistant:
-
-    dotnet run --project addon/tools/pagehost
-    # http://localhost:5299
-
-It serves the real components against the real stylesheet with a cabin made up.
-`addon/tools/pagehost/README.md` says how to photograph both themes.
-
-## Where things are
+## Where to find the rest
 
 | Path | Holds |
 |---|---|
-| `custom_components/adaptive_heating/` | The integration, laid out as Home Assistant and HACS expect |
-| `custom_components/adaptive_heating/core/` | The rules the thermostat runs on, importing nothing from Home Assistant |
-| `tests/` | The tests for the integration |
-| `addon/` | The C# half. `AdaptiveHeating.slnx` is the solution |
-| `adaptive_heating/` | The add-on manifest, its Dockerfile and its install notes |
-| `docs/mechanisms.md` | How the system behaves, and where every chosen number comes from |
-
-## Conventions
-
-- Tabs in the C# half, four spaces in the Python half. `.editorconfig` carries both.
-- Explicit types in C#, never `var`.
-- en-GB in every string a person reads, in both halves.
-- ISO dates, 24-hour clock, metric.
-
-## Licence
-
-MIT. See `LICENSE`.
+| `docs/how-it-behaves.md` | What each mode is for, why a heater cycles, what a room does when a sensor fails, and what a notification means |
+| `adaptive_heating/README.md` | The add-on's manifest, and what survives an update |
+| `custom_components/adaptive_heating/` | The integration |
+| `addon/` | The add-on's source. `AdaptiveHeating.slnx` is the solution |
+| `LICENSE` | MIT |

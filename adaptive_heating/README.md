@@ -10,9 +10,9 @@ no login of its own and maps no port: there is no address of the add-on's own to
 
 ## Installing
 
-Add this repository under **Settings → Add-ons → Add-on store → ⋮ → Repositories**, then install
+Add this repository under **Settings → Apps → Install app → ⋮ → Repositories**, then install
 **Adaptive heating**. The Supervisor builds the add-on on the box rather than pulling a published
-image, which takes about a minute.
+image, so the install is not instant. The repository's own `README.md` walks every step.
 
 Supported boards are `aarch64` and `amd64`. A 32-bit board is not covered.
 
