@@ -12,6 +12,7 @@ from enum import StrEnum
 from statistics import median
 
 from .defaults import STANDARD, Defaults
+from .regulation import Regulation
 
 
 class SensorExclusion(StrEnum):
@@ -68,23 +69,40 @@ class RoomReading:
 NO_READING = RoomReading(None, 0, 0, ())
 
 
+def borrow(lender: RoomReading | None, lending_room: str) -> RoomReading:
+    """A neighbour's reading for a room with no sensor of its own, or no reading at all.
+
+    The safe state: a neighbour with no temperature lends nothing, and a borrowed reading is never
+    lent onward, so the room stops rather than heating on a figure nobody measured.
+    """
+    if lender is None or lender.borrowed_from is not None or not lender.has_a_temperature:
+        return NO_READING
+    return lender.borrowed(lending_room)
+
+
 def read(
-    sensors: list[SensorReading], as_at: datetime, defaults: Defaults = STANDARD
+    sensors: list[SensorReading],
+    as_at: datetime,
+    settings: Defaults | Regulation = STANDARD,
 ) -> RoomReading:
-    """The room's temperature from the sensors that have reported recently."""
+    """The room's temperature from the sensors that have reported recently.
+
+    The three figures are read off whatever is passed: the standing defaults, or the room's own
+    regulation once the add-on has sent them.
+    """
     excluded: dict[str, SensorExclusion] = {}
     live: list[SensorReading] = []
 
     for sensor in sensors:
-        if sensor.temperature is None or as_at - sensor.reported_at > defaults.sensor_freshness:
+        if sensor.temperature is None or as_at - sensor.reported_at > settings.sensor_freshness:
             excluded[sensor.sensor_id] = SensorExclusion.QUIET
-        elif as_at - sensor.last_moved_at >= defaults.stuck_reading:
+        elif as_at - sensor.last_moved_at >= settings.stuck_reading:
             # A live sensor in a real room always wanders. A flat reading is a dying battery.
             excluded[sensor.sensor_id] = SensorExclusion.STUCK
         else:
             live.append(sensor)
 
-    if len(live) == 2 and abs(live[0].temperature - live[1].temperature) > defaults.sensor_spread:
+    if len(live) == 2 and abs(live[0].temperature - live[1].temperature) > settings.sensor_spread:
         # Two sensors cannot say which of them is lying, so the room loses its temperature with
         # both of them still reporting.
         for sensor in live:
@@ -93,7 +111,7 @@ def read(
     elif len(live) >= 3:
         middle = median(sensor.temperature for sensor in live)
         for sensor in list(live):
-            if abs(sensor.temperature - middle) > defaults.sensor_spread:
+            if abs(sensor.temperature - middle) > settings.sensor_spread:
                 excluded[sensor.sensor_id] = SensorExclusion.FAR_FROM_THE_OTHERS
                 live.remove(sensor)
 

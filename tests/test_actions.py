@@ -15,7 +15,7 @@ from core.reasons import NotHeating, Refused
 from core.regulation import HoldingBehaviour
 from core.sensors import SensorReading, read
 from core.thermostat import RoomThermostat
-from core.warmup import WarmUpOutcome, next_occurrence
+from core.warmup import WarmUpOutcome
 
 
 def room(temperature: float, minutes: float = 0.0):
@@ -128,10 +128,6 @@ class ActionTests(unittest.TestCase):
         self.assertEqual(self._read("06:00"), time(6, 0))
         self.assertEqual(self._read(at(hours=22).isoformat()), at(hours=22))
 
-        # Still ahead today, and already gone today. The run starts at 08:00.
-        self.assertEqual(next_occurrence(time(9, 30), at()), at(hours=1, minutes=30))
-        self.assertEqual(next_occurrence(time(6, 0), at()), at(hours=22))
-
         # What a value nobody can read answers: the field and what was wanted, never silence.
         self.assertIn("06:00", str(self._read("half past six")))
 
@@ -165,10 +161,11 @@ class ActionPickerTests(unittest.TestCase):
         self.words = json.loads((COMPONENT / "strings.json").read_text(encoding="utf-8"))
 
     def test_every_action_is_declared_and_named_with_the_same_fields(self) -> None:
-        self.assertEqual(set(self.declared), {action.name for action in table.ACTIONS})
-        self.assertEqual(set(self.words["services"]), {action.name for action in table.ACTIONS})
+        every = table.ACTIONS + table.HOUSE_ACTIONS
+        self.assertEqual(set(self.declared), {action.name for action in every})
+        self.assertEqual(set(self.words["services"]), {action.name for action in every})
 
-        for action in table.ACTIONS:
+        for action in every:
             wanted = {one.name for one in action.fields}
             self.assertEqual(set(self.declared[action.name].get("fields", {})), wanted)
             said = self.words["services"][action.name]

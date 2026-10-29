@@ -21,7 +21,7 @@ import voluptuous
 
 from _core import COMPONENT, at
 from core import actions as table
-from core.reasons import WORDS, NotHeating, Refused
+from core.reasons import REFUSAL_WORDS, NotHeating, Refused
 from core.sensors import SensorReading, read
 from core.thermostat import RoomThermostat
 
@@ -130,11 +130,15 @@ class WhatEachAnswerIsToldApartBy(unittest.TestCase):
 
     def test_the_sentence_a_room_gives_reaches_the_answer_word_for_word(self) -> None:
         for reason in (NotHeating.ROOM_IS_SWITCHED_OFF, NotHeating.THE_ROOM_HAS_NO_READING):
-            self.assertEqual(str(as_the_entity_hands_it_on(Refused(reason))), WORDS[reason])
+            self.assertEqual(
+                str(as_the_entity_hands_it_on(Refused(reason))), REFUSAL_WORDS[reason]
+            )
 
-        self.assertEqual(WORDS[NotHeating.ROOM_IS_SWITCHED_OFF], "The room is switched off.")
         self.assertEqual(
-            WORDS[NotHeating.THE_ROOM_HAS_NO_READING],
+            REFUSAL_WORDS[NotHeating.ROOM_IS_SWITCHED_OFF], "The room is switched off."
+        )
+        self.assertEqual(
+            REFUSAL_WORDS[NotHeating.THE_ROOM_HAS_NO_READING],
             "The room has no temperature reading.",
         )
 

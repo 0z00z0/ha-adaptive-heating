@@ -7,6 +7,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from enum import StrEnum
 
+from .card import PRESETS
 from .defaults import STANDARD, Defaults
 from .freshness import FreshnessRecord
 from .loop import HeaterLoop, LoopDecision, RelayObservation, Stage
@@ -14,7 +15,14 @@ from .power import PowerWatch
 from .reasons import Fault, NotHeating, Refused
 from .regulation import BandLearning, HoldingBehaviour, Regulation, Switched
 from .sensors import NO_READING, RoomReading
+from .setpoint import SetpointLoop, ThermostatObservation, is_a_thermostat
 from .warmup import TimedHold, WarmingRate, WarmUp, WarmUpOutcome, plan
+
+
+def _answers(seen: RelayObservation | ThermostatObservation | None) -> bool:
+    if isinstance(seen, ThermostatObservation):
+        return seen.answering
+    return seen is not None and seen.closed is not None
 
 
 class WindowState(StrEnum):
@@ -27,6 +35,8 @@ class WindowState(StrEnum):
 class Command:
     heater_id: str
     closed: bool
+    # Only a thermostat underneath is given a number, and only with heat.
+    setpoint: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +58,8 @@ class Decision:
     # What the relay is actually doing where the guard and the duty disagree, and what the meter says.
     held_by_the_relay_guard: bool = False
     fault: Fault | None = None
+    # A room with no switch underneath has no duty outside a blind spell, and publishes none.
+    has_a_duty: bool = True
 
 
 class RoomThermostat:
@@ -55,7 +67,6 @@ class RoomThermostat:
         self,
         room_id: str,
         heater_ids: list[str],
-        frost_temperature: float | None = None,
         defaults: Defaults = STANDARD,
         no_reading_at_all: bool = False,
     ) -> None:
@@ -66,10 +77,12 @@ class RoomThermostat:
         self.no_reading_at_all = no_reading_at_all
         self.switched_on = True
         # Every starting value is the cold one, and no restart lands on a warmer setting.
-        self.target = frost_temperature if frost_temperature is not None else (
-            defaults.minimum_temperature
-        )
+        self.target = defaults.minimum_temperature
         self.target_set_at: datetime | None = None
+        # Written only by `set_preset` and `restore`. Nothing in `evaluate` reads or clears it.
+        self.preset: str | None = None
+        # The add-on weighs a card preset against a hand change by this moment, as it does the target's.
+        self.preset_set_at: datetime | None = None
         self.regulation = Regulation()
         self.band_learning = BandLearning(defaults)
         self.warming_rate = WarmingRate(defaults.warming_rate_by_hand, None, False)
@@ -79,21 +92,53 @@ class RoomThermostat:
         self.power = PowerWatch(defaults)
         self.reading: RoomReading = NO_READING
         self.window = WindowState.CLOSED
-        cycle = defaults.cycle_length.total_seconds()
-        self.loops = [
-            HeaterLoop(
-                heater_id,
-                timedelta(seconds=(cycle * index) / max(1, len(heater_ids))),
-                defaults,
-            )
-            for index, heater_id in enumerate(heater_ids)
-        ]
+        self.loops: list[HeaterLoop | SetpointLoop] = []
+        # Unknown, unavailable or missing at the last evaluation, counted per heater as lighting
+        # counts its lamps.
+        self.heaters_not_answering = 0
+        self.drive(heater_ids)
         self._window_changed_at: datetime | None = None
         self._window_stops_heating = False
         self._outdoor_seen: list[tuple[datetime, float]] = []
         self._watching: float | None = None
         self._watching_closed = False
         self.last_warm_up: WarmUp | None = None
+
+    def drive(self, heater_ids: list[str]) -> None:
+        """Point the room at a heater set, keeping the loop of every heater that stays.
+
+        A loop carries its cycle start and its last change, so rebuilding one that stays would hand
+        the relay guard a clean slate. What is underneath follows from the entity's domain and from
+        nothing a person is asked.
+        """
+        if [loop.heater_id for loop in self.loops] == list(heater_ids):
+            return
+        standing = {loop.heater_id: loop for loop in self.loops}
+        cycle = self._defaults.cycle_length.total_seconds()
+        self.loops = [
+            standing.get(heater_id)
+            or (
+                SetpointLoop(heater_id, self._defaults) if is_a_thermostat(heater_id) else
+                HeaterLoop(
+                    heater_id,
+                    timedelta(seconds=(cycle * index) / max(1, len(heater_ids))),
+                    self._defaults,
+                )
+            )
+            for index, heater_id in enumerate(heater_ids)
+        ]
+
+    @property
+    def thermostat_minimum(self) -> float | None:
+        """The highest `min_temp` among the thermostats underneath; a relay has none."""
+        return max(
+            (
+                loop.observed.minimum
+                for loop in self.loops
+                if isinstance(loop, SetpointLoop) and loop.observed.minimum is not None
+            ),
+            default=None,
+        )
 
     # ----- what a person or the planner does to it -------------------------------------------
 
@@ -109,6 +154,11 @@ class RoomThermostat:
     def set_target(self, temperature: float, at: datetime) -> None:
         self.target = temperature
         self.target_set_at = at
+
+    def set_preset(self, preset: str, at: datetime) -> None:
+        """Held on this room until something writes another: a boundary or a change for the house."""
+        self.preset = preset
+        self.preset_set_at = at
 
     def warm_room_by(
         self, temperature: float, deadline: datetime, now: datetime
@@ -141,6 +191,11 @@ class RoomThermostat:
             known["behaviour"] = HoldingBehaviour(str(known["behaviour"]))
         if "switched" in known:
             known["switched"] = Switched(str(known["switched"]))
+        if "frost_limit" in known:
+            known["frost_limit"] = str(known["frost_limit"]) == "on"
+        for slot in ("heaters", "temperature_sensors"):
+            if slot in known:
+                known[slot] = tuple(known[slot])  # type: ignore[call-overload]
         if "band" in known:
             self.band_learning.set(float(known["band"]))  # type: ignore[arg-type]
             known["band"] = self.band_learning.in_force
@@ -189,13 +244,16 @@ class RoomThermostat:
         outdoor: float | None = None,
         window: WindowState = WindowState.CLOSED,
         power: float | None = None,
-        relays: dict[str, RelayObservation] | None = None,
+        relays: dict[str, RelayObservation | ThermostatObservation] | None = None,
     ) -> Decision:
         self.reading = reading
         # What each switch says about itself, before anything is decided from it. A room that heats
         # nothing this pass still has to reconcile, or a heater found on stays on.
         for loop in self.loops:
             loop.see((relays or {}).get(loop.heater_id))
+        self.heaters_not_answering = sum(
+            not _answers((relays or {}).get(loop.heater_id)) for loop in self.loops
+        )
         self._forget_a_rate_this_room_cannot_have()
         self._settle_window(now, window)
         self._retire_finished_work(now)
@@ -232,13 +290,25 @@ class RoomThermostat:
             )
             decisions.append(decision)
             if decision.changed:
-                commands.append(Command(loop.heater_id, decision.relay_closed))
+                commands.append(self._command(loop, decision))
 
-        self._watch_the_drift(reading.temperature, target, decisions)
+        # The band, the duty and the guard belong to relays, and a thermostat reaches none of them.
+        on_relays = [
+            decision
+            for loop, decision in zip(self.loops, decisions, strict=True)
+            if isinstance(loop, HeaterLoop)
+        ]
+        self._watch_the_drift(reading.temperature, target, on_relays)
+        # A blind thermostat runs the relay's fallback, so it has a duty for as long as that lasts.
+        with_a_duty = on_relays + [
+            decision
+            for loop, decision in zip(self.loops, decisions, strict=True)
+            if isinstance(loop, SetpointLoop) and decision.stage is Stage.REPEATING_THE_HOLDING_DUTY
+        ]
 
         heating = any(decision.relay_closed for decision in decisions)
-        duty = max((decision.duty for decision in decisions), default=0.0)
-        delivered = max((decision.delivered for decision in decisions), default=0.0)
+        duty = max((decision.duty for decision in with_a_duty), default=0.0)
+        delivered = max((decision.delivered for decision in with_a_duty), default=0.0)
         stage = decisions[0].stage if decisions else Stage.NOT_HEATING
         reason = None if heating else self._why_not(reading, decisions)
         return Decision(
@@ -254,7 +324,15 @@ class RoomThermostat:
             self._reports_a_problem(reading),
             any(decision.held_by_the_relay_guard for decision in decisions),
             self.power.fault,
+            bool(with_a_duty) or not self.loops,
         )
+
+    @staticmethod
+    def _command(loop: HeaterLoop | SetpointLoop, decision: LoopDecision) -> Command:
+        if isinstance(loop, SetpointLoop):
+            heat, setpoint = loop.command()
+            return Command(loop.heater_id, heat, setpoint)
+        return Command(loop.heater_id, decision.relay_closed)
 
     def _forget_a_rate_this_room_cannot_have(self) -> None:
         """A room that can never measure a rise must not report one.
@@ -279,6 +357,7 @@ class RoomThermostat:
             for loop in self.loops
             if loop.open_once(now).changed
         ]
+        has_a_duty = any(isinstance(loop, HeaterLoop) for loop in self.loops) or not self.loops
         return Decision(
             target,
             False,
@@ -292,11 +371,14 @@ class RoomThermostat:
             self._reports_a_problem(self.reading),
             False,
             self.power.fault,
+            has_a_duty,
         )
 
     def _why_not(self, reading: RoomReading, decisions: list[LoopDecision]) -> NotHeating:
         if any(decision.held_by_the_relay_guard for decision in decisions):
             return NotHeating.RELAY_GUARD_IS_HOLDING
+        if any(d.reason is NotHeating.THE_HEATER_IS_NOT_ANSWERING for d in decisions):
+            return NotHeating.THE_HEATER_IS_NOT_ANSWERING
         # A room with no reading at all is not missing one: the mode simply says off.
         if self.no_reading_at_all:
             return NotHeating.THE_MODE_SAYS_OFF
@@ -313,11 +395,18 @@ class RoomThermostat:
         # room as having a problem. This is the only place that decides it.
         if not self.switched_on:
             return False
+        if self._a_thermostat_is_not_answering():
+            return True
         # A room that never had a reading is not a room that lost one. Reporting the absence would
         # name that room for ever, and there is nothing to go and look at.
         if self.no_reading_at_all:
             return self.power.fault is not None
         return bool(reading.left_out) or not reading.has_a_temperature or self.power.fault is not None
+
+    def _a_thermostat_is_not_answering(self) -> bool:
+        return any(
+            isinstance(loop, SetpointLoop) and not loop.observed.answering for loop in self.loops
+        )
 
     def _settle_window(self, now: datetime, window: WindowState) -> None:
         # A sensor that went quiet while it last said open would otherwise hold the room cold for
@@ -380,6 +469,8 @@ class RoomThermostat:
             "switched_on": self.switched_on,
             "target": self.target,
             "target_set_at": None if self.target_set_at is None else self.target_set_at.isoformat(),
+            "preset": self.preset,
+            "preset_set_at": None if self.preset_set_at is None else self.preset_set_at.isoformat(),
             "regulation": self.regulation.as_dict(),
             "band_learning": self.band_learning.as_dict(),
             "warming_rate": {
@@ -409,6 +500,12 @@ class RoomThermostat:
                 self.target_set_at = datetime.fromisoformat(str(set_at))
             except ValueError:
                 self.target_set_at = None
+        preset = stored.get("preset")
+        self.preset = preset if preset in PRESETS else None
+        preset_set_at = stored.get("preset_set_at")
+        if self.preset is not None and preset_set_at is not None:
+            with suppress(ValueError):
+                self.preset_set_at = datetime.fromisoformat(str(preset_set_at))
         self.regulation = Regulation.from_dict(stored.get("regulation"))  # type: ignore[arg-type]
         self.band_learning = BandLearning.from_dict(
             stored.get("band_learning"), self._defaults  # type: ignore[arg-type]

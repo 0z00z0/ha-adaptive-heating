@@ -1,11 +1,13 @@
-"""The thermostat a room appears as, and the five actions that drive it."""
+"""The thermostat a room appears as, and the six actions that drive it."""
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import operator
 from collections.abc import Callable
 from datetime import datetime, time, timedelta
+from functools import reduce
 from typing import Any
 
 from homeassistant.components.climate import (
@@ -16,8 +18,11 @@ from homeassistant.components.climate import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_TEMPERATURE, STATE_OFF, STATE_ON, UnitOfTemperature
-from homeassistant.core import CoreState, Event, HomeAssistant, callback
+from homeassistant.core import CALLBACK_TYPE, CoreState, Event, HomeAssistant, callback
 from homeassistant.exceptions import ServiceValidationError
+from homeassistant.helpers import area_registry as ar
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event, async_track_time_interval
@@ -25,38 +30,6 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from .const import (
-    ATTR_BAND,
-    ATTR_BORROWED_FROM,
-    ATTR_DUTY,
-    ATTR_DUTY_ASKED_FOR,
-    ATTR_FAULT,
-    ATTR_HAS_A_POWER_METER,
-    ATTR_HOLD_ENDS_AT,
-    ATTR_INTEGRATION_VERSION,
-    ATTR_NO_READING_AT_ALL,
-    ATTR_OUTDOOR,
-    ATTR_POWER,
-    ATTR_REASON,
-    ATTR_RELAY_GUARD_IS_HOLDING,
-    ATTR_REPORTS_A_PROBLEM,
-    ATTR_RESTING_ON,
-    ATTR_ROOM,
-    ATTR_SENSORS_IN_THE_ROOM,
-    ATTR_SENSORS_LEFT_OUT,
-    ATTR_STAGE,
-    ATTR_SWITCHED,
-    ATTR_TARGET_SET_AT,
-    ATTR_VOCABULARY_VERSION,
-    ATTR_WARM_UP,
-    ATTR_WARMING_RATE,
-    ATTR_WARMING_RATE_MEASURED,
-    CONF_HEATERS,
-    CONF_NEIGHBOUR,
-    CONF_OUTDOOR_SENSOR,
-    CONF_POWER_SENSOR,
-    CONF_ROOM,
-    CONF_TEMPERATURE_SENSORS,
-    CONF_WINDOW_SENSOR,
     DOMAIN,
     EVALUATION_INTERVAL,
     INTEGRATION_VERSION,
@@ -64,14 +37,18 @@ from .const import (
     STORAGE_WRITE_DELAY,
     VOCABULARY_VERSION,
 )
+from .core import card
 from .core.defaults import STANDARD
 from .core.freshness import when_it_reported
+from .core.identity import RoomIdentity
 from .core.loop import RelayObservation
-from .core.reasons import FAULT_WORDS, WORDS, Refused
-from .core.sensors import NO_READING, RoomReading, read
+from .core.reasons import Fault, NotHeating, Refused, issue_key
+from .core.rooms import Room, named_or_discovered
+from .core.sensors import NO_READING, RoomReading, borrow, read
 from .core.serialisation import OneAtATime
-from .core.thermostat import RoomThermostat, WindowState
-from .core.warmup import next_occurrence
+from .core.setpoint import HEAT, OFF, ThermostatObservation, is_a_thermostat, observe
+from .core.setup import heater_already_claimed
+from .core.thermostat import Command, RoomThermostat, WindowState
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -81,9 +58,16 @@ UNUSABLE = ("unknown", "unavailable", "", None)
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    thermostat = AdaptiveHeatingThermostat(hass, entry)
-    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = thermostat
-    async_add_entities([thermostat])
+    house = entry.runtime_data
+
+    @callback
+    def add_a_room(room: Room) -> None:
+        async_add_entities([AdaptiveHeatingThermostat(hass, entry, room)])
+
+    house.add_a_room = add_a_room
+    async_add_entities(
+        [AdaptiveHeatingThermostat(hass, entry, room) for room in house.rooms.values()]
+    )
 
 
 class AdaptiveHeatingThermostat(ClimateEntity):
@@ -91,54 +75,67 @@ class AdaptiveHeatingThermostat(ClimateEntity):
 
     _attr_has_entity_name = True
     _attr_name = None
+    # Carries the custom preset names' translations in the strings files.
+    _attr_translation_key = "room"
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
-    _attr_hvac_modes = [HVACMode.HEAT, HVACMode.OFF]
-    _attr_supported_features = (
-        ClimateEntityFeature.TARGET_TEMPERATURE
-        | ClimateEntityFeature.TURN_ON
-        | ClimateEntityFeature.TURN_OFF
-    )
-    _attr_min_temp = STANDARD.minimum_temperature
-    _attr_max_temp = STANDARD.maximum_temperature
-    _attr_target_temperature_step = STANDARD.temperature_step
     _attr_should_poll = False
+    # A class variable: the platform combines it once per subclass and reads nothing per instance.
+    _unrecorded_attributes = card.EVERY_ATTRIBUTE
 
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry, room: Room) -> None:
         self.hass = hass
         self._entry = entry
-        options: dict[str, Any] = {**entry.data, **entry.options}
-        self._room: str = options.get(CONF_ROOM, entry.title)
-        self._heaters: list[str] = list(options.get(CONF_HEATERS, []))
-        self._sensors: list[str] = list(options.get(CONF_TEMPERATURE_SENSORS, []))
-        self._window_sensor: str | None = options.get(CONF_WINDOW_SENSOR)
-        self._outdoor_sensor: str | None = options.get(CONF_OUTDOOR_SENSOR)
-        self._neighbour: str | None = options.get(CONF_NEIGHBOUR)
-        self._power_sensor: str | None = options.get(CONF_POWER_SENSOR)
-        no_reading_at_all = not self._sensors and not self._neighbour
+        # The room's own identity never changes; the area is where it is now.
+        self._identity = RoomIdentity(room.room_id)
+        self._room_id = self._identity.room_id
+        self._area_id = room.area_id
+        self._discovered_heaters: list[str] = list(room.heaters)
+        self._discovered_sensors: list[str] = list(room.temperature_sensors)
+        self._heaters: list[str] = list(room.heaters)
+        self._sensors: list[str] = list(room.temperature_sensors)
+        self._window_sensor: str | None = None
+        self._outdoor_sensor: str | None = None
+        self._neighbour: str | None = None
+        self._power_sensor: str | None = None
 
-        # A room with no reading has no temperature to set, so the card offers none. Home Assistant
-        # itself then refuses the standard action that would set one.
-        if no_reading_at_all:
-            self._attr_supported_features = (
-                ClimateEntityFeature.TURN_ON | ClimateEntityFeature.TURN_OFF
-            )
-
-        self._attr_unique_id = entry.entry_id
+        self._attr_unique_id = self._identity.unique_id
+        area = ar.async_get(hass).async_get_area(room.area_id)
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, entry.entry_id)},
-            name=self._room,
+            identifiers={self._identity.device_identifier},
+            # A display name and nothing more. The device is placed in its Area by id once it
+            # exists, because `suggested_area` takes a name and can create a second area where that
+            # name does not match an existing one.
+            name=room.area_id if area is None else area.name,
             manufacturer="Adaptive Heating",
         )
         self._thermostat = RoomThermostat(
-            self._room, self._heaters, no_reading_at_all=no_reading_at_all
+            self._room_id, self._heaters, no_reading_at_all=not self._sensors
         )
-        self._store: Store = Store(hass, STORAGE_VERSION, f"{DOMAIN}.{entry.entry_id}")
+        self._take_the_offer()
+        self._store: Store = Store(hass, STORAGE_VERSION, self._identity.store_key)
         self._decision = None
         self._reading: RoomReading = NO_READING
         self._restarted_at: datetime | None = None
         self._outdoor_now: float | None = None
         self._one_at_a_time = OneAtATime(lambda: self._evaluate(dt_util.utcnow()))
         self._passes: set[asyncio.Task[None]] = set()
+        self._watching_states: CALLBACK_TYPE | None = None
+        self._fault_raised: Fault | None = None
+
+    @callback
+    def _take_the_offer(self) -> None:
+        # The same for every room, whatever heats it: nothing of a thermostat underneath is copied.
+        offered = card.offered(self._thermostat)
+        self._attr_hvac_modes = [HVACMode(mode) for mode in offered.modes]
+        self._attr_supported_features = reduce(
+            operator.or_,
+            (ClimateEntityFeature[name] for name in offered.features),
+            ClimateEntityFeature(0),
+        )
+        self._attr_preset_modes = list(offered.presets)
+        self._attr_min_temp = offered.minimum
+        self._attr_max_temp = offered.maximum
+        self._attr_target_temperature_step = offered.step
 
     # ----- the platform's own surface -----------------------------------------------------------
 
@@ -147,12 +144,24 @@ class AdaptiveHeatingThermostat(ClimateEntity):
         return HVACMode.HEAT if self._thermostat.switched_on else HVACMode.OFF
 
     @property
+    def preset_mode(self) -> str | None:
+        return self._thermostat.preset
+
+    @property
     def hvac_action(self) -> HVACAction:
         if not self._thermostat.switched_on:
             return HVACAction.OFF
         if self._decision is not None and self._decision.heating:
+            warm_up = self._thermostat.warm_up
+            if warm_up is not None and warm_up.running(dt_util.utcnow()):
+                return HVACAction.PREHEATING
             return HVACAction.HEATING
         return HVACAction.IDLE
+
+    @property
+    def not_heating_because(self) -> NotHeating | None:
+        """What the room's own enum sensor publishes. Nothing of it reaches the card."""
+        return None if self._decision is None else self._decision.reason
 
     @property
     def current_temperature(self) -> float | None:
@@ -170,52 +179,17 @@ class AdaptiveHeatingThermostat(ClimateEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        thermostat = self._thermostat
-        decision = self._decision
-        warm_up = thermostat.warm_up
-        return {
-            # The add-on finds its rooms by these three. Nothing else in a house publishes them, so a
-            # thermostat carrying them is one of this integration's and one carrying none is not.
-            ATTR_ROOM: self._room,
-            ATTR_INTEGRATION_VERSION: INTEGRATION_VERSION,
-            ATTR_VOCABULARY_VERSION: VOCABULARY_VERSION,
-            ATTR_REASON: None if decision is None or decision.reason is None
-            else WORDS[decision.reason],
-            ATTR_STAGE: None if decision is None else str(decision.stage),
-            # What the relay was held for, which is the figure anything learning from a cycle reads.
-            # The request stands beside it so the law can still be followed.
-            ATTR_DUTY: None if decision is None else round(decision.delivered, 3),
-            ATTR_DUTY_ASKED_FOR: None if decision is None else round(decision.duty, 3),
-            ATTR_RESTING_ON: self._reading.resting_on,
-            ATTR_SENSORS_IN_THE_ROOM: self._reading.sensors_in_the_room,
-            ATTR_SENSORS_LEFT_OUT: {
-                verdict.sensor_id: str(verdict.excluded) for verdict in self._reading.left_out
-            },
-            ATTR_BORROWED_FROM: self._reading.borrowed_from,
-            ATTR_WARM_UP: None if warm_up is None else warm_up.as_dict(),
-            ATTR_HOLD_ENDS_AT: None if thermostat.hold is None
-            else thermostat.hold.ends_at.isoformat(),
-            ATTR_BAND: thermostat.band_learning.in_force,
-            ATTR_WARMING_RATE: thermostat.warming_rate.degrees_per_hour,
-            ATTR_WARMING_RATE_MEASURED: thermostat.warming_rate.measured,
-            ATTR_REPORTS_A_PROBLEM: False if decision is None else decision.reports_a_problem,
-            # Follows from how the room was set up, never from a sensor that has gone quiet: a room with
-            # no sensor of its own and no neighbour to borrow from can only be switched on and off.
-            ATTR_NO_READING_AT_ALL: thermostat.no_reading_at_all,
-            ATTR_SWITCHED: None if thermostat.regulation.switched is None
-            else str(thermostat.regulation.switched),
-            ATTR_OUTDOOR: self._outdoor_now,
-            ATTR_TARGET_SET_AT: None if thermostat.target_set_at is None
-            else thermostat.target_set_at.isoformat(),
-            # The duty above is what the loop asked for. Where the guard overrides it, this is what
-            # the relay is actually doing.
-            ATTR_RELAY_GUARD_IS_HOLDING: False if decision is None
-            else decision.held_by_the_relay_guard,
-            ATTR_HAS_A_POWER_METER: self._power_sensor is not None,
-            ATTR_POWER: thermostat.power.watts,
-            ATTR_FAULT: None if thermostat.power.fault is None
-            else FAULT_WORDS[thermostat.power.fault],
-        }
+        return card.attributes(
+            self._room_id,
+            self._area_id,
+            INTEGRATION_VERSION,
+            VOCABULARY_VERSION,
+            self._thermostat,
+            self._decision,
+            self._reading,
+            self._outdoor_now,
+            self._power_sensor is not None,
+        )
 
     async def async_added_to_hass(self) -> None:
         # Set up while the core is still coming up means every state in the machine carries the
@@ -224,22 +198,59 @@ class AdaptiveHeatingThermostat(ClimateEntity):
         if self.hass.state is not CoreState.running:
             self._restarted_at = dt_util.utcnow()
 
+        # Keyed by the room id, which a move leaves alone.
+        self.hass.data.setdefault(DOMAIN, {})[self._room_id] = self
+        self._place_the_device_in_its_area()
+
         stored = await self._store.async_load()
         self._thermostat.restore(stored, dt_util.utcnow())
 
-        watched = [*self._sensors, *self._heaters]
-        for optional in (self._window_sensor, self._outdoor_sensor, self._power_sensor):
-            if optional:
-                watched.append(optional)
-        if watched:
-            self.async_on_remove(
-                async_track_state_change_event(self.hass, watched, self._state_changed)
-            )
+        self._watch_what_the_room_reads()
         self.async_on_remove(
             async_track_time_interval(self.hass, self._on_the_clock, EVALUATION_INTERVAL)
         )
         self.async_on_remove(self._stop_evaluating)
         await self._one_at_a_time.after_a_change()
+
+    async def async_will_remove_from_hass(self) -> None:
+        if self.hass.data.get(DOMAIN, {}).get(self._room_id) is self:
+            self.hass.data[DOMAIN].pop(self._room_id)
+
+    @callback
+    def _place_the_device_in_its_area(self) -> None:
+        registry = dr.async_get(self.hass)
+        device = registry.async_get_device(identifiers={self._identity.device_identifier})
+        if device is not None and device.area_id != self._area_id:
+            registry.async_update_device(device.id, area_id=self._area_id)
+
+    @callback
+    def follow_the_area(self, room: Room) -> None:
+        """The room is in another area now: its card says so and it drives what that area holds."""
+        self._area_id = room.area_id
+        self._discovered_heaters = list(room.heaters)
+        self._discovered_sensors = list(room.temperature_sensors)
+        self._follow_the_named_slots()
+        # The issue named the old area; the next pass raises it again under the new name.
+        if self._fault_raised is not None:
+            ir.async_delete_issue(self.hass, DOMAIN, self._issue_id(self._fault_raised))
+            self._fault_raised = None
+        self.async_write_ha_state()
+        self._start_a_pass()
+
+    @callback
+    def _watch_what_the_room_reads(self) -> None:
+        """Every entity this room reads, re-subscribed whenever the add-on names a slot."""
+        if self._watching_states is not None:
+            self._watching_states()
+            self._watching_states = None
+        watched = [*self._sensors, *self._heaters]
+        for optional in (self._window_sensor, self._outdoor_sensor, self._power_sensor):
+            if optional:
+                watched.append(optional)
+        if watched:
+            self._watching_states = async_track_state_change_event(
+                self.hass, watched, self._state_changed
+            )
 
     @callback
     def _stop_evaluating(self) -> None:
@@ -249,6 +260,13 @@ class AdaptiveHeatingThermostat(ClimateEntity):
         that has gone with it.
         """
         self._one_at_a_time.close()
+        # A room that has gone leaves no issue behind for a fault nothing is watching any more.
+        if self._fault_raised is not None:
+            ir.async_delete_issue(self.hass, DOMAIN, self._issue_id(self._fault_raised))
+            self._fault_raised = None
+        if self._watching_states is not None:
+            self._watching_states()
+            self._watching_states = None
         for pass_in_flight in list(self._passes):
             pass_in_flight.cancel()
 
@@ -281,20 +299,32 @@ class AdaptiveHeatingThermostat(ClimateEntity):
         else:
             await self._act(self._thermostat.switch_on)
 
+    async def async_set_preset_mode(self, preset_mode: str) -> None:
+        # Stored and reported as given. The house's status selector is never written from here.
+        await self._act(lambda now: self._thermostat.set_preset(preset_mode, now))
+
     async def async_turn_on(self) -> None:
         await self.async_set_hvac_mode(HVACMode.HEAT)
 
     async def async_turn_off(self) -> None:
         await self.async_set_hvac_mode(HVACMode.OFF)
 
-    # ----- the five actions -----------------------------------------------------------------------
+    # ----- the six actions ------------------------------------------------------------------------
 
     # A refusal leaves `_act` as the platform's own `ServiceValidationError`, so the websocket
     # answers `service_validation_error` and the add-on reads it as the room's answer. A field out
     # of bounds never reaches here: the schema raises a `vol.Invalid` and that answers
     # `invalid_format`.
     async def async_warm_room_by(self, temperature: float, by_time: datetime | time) -> None:
-        wanted = by_time if isinstance(by_time, datetime) else next_occurrence(by_time, dt_util.now())
+        # The core helper, not an hour written onto today's date: on the two nights the clock moves
+        # the arithmetic lands an hour out.
+        wanted = (
+            by_time
+            if isinstance(by_time, datetime)
+            else dt_util.find_next_time_expression_time(
+                dt_util.now(), [by_time.second], [by_time.minute], [by_time.hour]
+            )
+        )
 
         await self._act(
             lambda now: self._thermostat.warm_room_by(temperature, dt_util.as_utc(wanted), now)
@@ -313,10 +343,51 @@ class AdaptiveHeatingThermostat(ClimateEntity):
         )
 
     async def async_set_regulation(self, **fields: Any) -> None:
-        await self._act(lambda _now: self._thermostat.set_regulation(**fields))
+        await self._act(lambda _now: self._set_regulation(**fields))
+
+    def _set_regulation(self, **fields: Any) -> None:
+        named = fields.get("heaters")
+        if named and heater_already_claimed(named, self._what_the_other_rooms_drive()) is not None:
+            # Two loops over one relay each count only their own changes, so the shortest time
+            # between relay changes stops protecting anything.
+            raise Refused(NotHeating.THE_HEATER_BELONGS_TO_ANOTHER_ROOM)
+        self._thermostat.set_regulation(**fields)
+        self._follow_the_named_slots()
+
+    def _what_the_other_rooms_drive(self) -> dict[str, list[str]]:
+        """Every other room's heaters, keyed by room id."""
+        return {
+            room_id: list(other._heaters)
+            for room_id, other in self.hass.data.get(DOMAIN, {}).items()
+            if isinstance(other, AdaptiveHeatingThermostat) and other is not self
+        }
+
+    @callback
+    def _follow_the_named_slots(self) -> None:
+        """A slot the add-on named is that slot's whole set; the registry read stands elsewhere."""
+        regulation = self._thermostat.regulation
+        self._heaters = named_or_discovered(regulation.heaters, self._discovered_heaters)
+        self._sensors = named_or_discovered(
+            regulation.temperature_sensors, self._discovered_sensors
+        )
+        self._window_sensor = regulation.window_sensor
+        self._power_sensor = regulation.power_sensor
+        self._outdoor_sensor = regulation.outdoor_sensor
+        self._neighbour = regulation.neighbour
+        self._thermostat.drive(self._heaters)
+        # Follows from what the room reads and never from a sensor going quiet.
+        self._thermostat.no_reading_at_all = not self._sensors and not self._neighbour
+        self._take_the_offer()
+        self._watch_what_the_room_reads()
 
     async def async_return_to_target(self) -> None:
         await self._act(self._thermostat.return_to_target)
+
+    async def async_move_to_area(self, area: str) -> None:
+        # Imported here: the package imports this platform, not the other way round.
+        from . import move_room
+
+        await move_room(self.hass, self._entry, self._room_id, area)
 
     # ----- the evaluation -------------------------------------------------------------------------
 
@@ -351,7 +422,7 @@ class AdaptiveHeatingThermostat(ClimateEntity):
         self._decision = decision
 
         for command in decision.commands:
-            await self._command(command.heater_id, command.closed)
+            await self._command(command)
 
         # A coalesced write beats the platform's own fifteen minutes, but a value whose loss
         # matters goes down before the call returns.
@@ -360,6 +431,39 @@ class AdaptiveHeatingThermostat(ClimateEntity):
         else:
             self._store.async_delay_save(self._thermostat.as_dict, STORAGE_WRITE_DELAY)
         self.async_write_ha_state()
+        self._tell_about_the_fault()
+        reason = self._entry.runtime_data.reason_sensors.get(self._room_id)
+        if reason is not None:
+            reason.async_write_ha_state()
+
+    @callback
+    def _tell_about_the_fault(self) -> None:
+        """One repairs issue per fault, keyed on the fault and the room id, deleted when it clears."""
+        fault = self._thermostat.power.fault
+        if fault is self._fault_raised:
+            return
+        if self._fault_raised is not None:
+            ir.async_delete_issue(self.hass, DOMAIN, self._issue_id(self._fault_raised))
+        self._fault_raised = fault
+        if fault is None:
+            return
+        area = ar.async_get(self.hass).async_get_area(self._area_id)
+        ir.async_create_issue(
+            self.hass,
+            DOMAIN,
+            self._issue_id(fault),
+            is_fixable=False,
+            severity=ir.IssueSeverity.WARNING,
+            # A room over a thermostat has no relay, so the words differ by what heats the room.
+            translation_key=issue_key(fault, self._over_a_thermostat()),
+            translation_placeholders={"room": self._area_id if area is None else area.name},
+        )
+
+    def _issue_id(self, fault: Fault) -> str:
+        return self._identity.issue_id(str(fault))
+
+    def _over_a_thermostat(self) -> bool:
+        return bool(self._heaters) and all(is_a_thermostat(one) for one in self._heaters)
 
     def _note_what_the_sensors_say(self, now: datetime) -> None:
         for sensor_id in self._sensors:
@@ -381,15 +485,24 @@ class AdaptiveHeatingThermostat(ClimateEntity):
                 )
             except ValueError:
                 continue
-        self._thermostat.freshness.prune(now)
+        self._thermostat.freshness.prune(
+            now, self._thermostat.regulation.freshness_record_retention
+        )
 
     def _room_reading(self, now: datetime) -> RoomReading:
+        regulation = self._thermostat.regulation
         if self._sensors:
-            return read(self._thermostat.freshness.readings(self._sensors, now), now)
+            return read(
+                self._thermostat.freshness.readings(
+                    self._sensors, now, regulation.sensor_freshness
+                ),
+                now,
+                regulation,
+            )
         lender = self._lender()
         if lender is None:
             return NO_READING
-        return lender._reading.borrowed(lender.entity_id or lender._room)
+        return borrow(lender._reading, lender.entity_id or lender._area_id)
 
     def _lender(self) -> AdaptiveHeatingThermostat | None:
         if not self._neighbour:
@@ -397,11 +510,8 @@ class AdaptiveHeatingThermostat(ClimateEntity):
         for other in self.hass.data.get(DOMAIN, {}).values():
             if not isinstance(other, AdaptiveHeatingThermostat) or other is self:
                 continue
-            if other.entity_id != self._neighbour and other._room != self._neighbour:
+            if other.entity_id != self._neighbour and other._area_id != self._neighbour:
                 continue
-            # A borrowed reading is never borrowed onward, so a borrowing room cannot lend.
-            if other._reading.borrowed_from is not None or not other._reading.has_a_temperature:
-                return None
             return other
         return None
 
@@ -437,7 +547,7 @@ class AdaptiveHeatingThermostat(ClimateEntity):
         except ValueError:
             return None
 
-    def _relays(self) -> dict[str, RelayObservation]:
+    def _relays(self) -> dict[str, RelayObservation | ThermostatObservation]:
         """What each switch says about itself, and when it last moved.
 
         A switch that is unknown or unavailable reports nothing rather than reporting open, so a
@@ -445,9 +555,15 @@ class AdaptiveHeatingThermostat(ClimateEntity):
         off the mesh is left alone. The stamp is Home Assistant's own, so a wall switch a person
         flipped holds the guard and nothing has to be stored to survive a restart.
         """
-        seen: dict[str, RelayObservation] = {}
+        seen: dict[str, RelayObservation | ThermostatObservation] = {}
         for heater_id in self._heaters:
             state = self.hass.states.get(heater_id)
+            if is_a_thermostat(heater_id):
+                seen[heater_id] = observe(
+                    None if state is None else state.state,
+                    None if state is None else state.attributes,
+                )
+                continue
             if state is None or state.state in UNUSABLE:
                 seen[heater_id] = RelayObservation(None, None)
                 continue
@@ -466,12 +582,20 @@ class AdaptiveHeatingThermostat(ClimateEntity):
             return WindowState.CLOSED
         return WindowState.QUIET
 
-    async def _command(self, heater_id: str, closed: bool) -> None:
+    async def _command(self, command: Command) -> None:
+        heater_id = command.heater_id
         domain = heater_id.split(".")[0]
-        service = "turn_on" if closed else "turn_off"
-        try:
-            await self.hass.services.async_call(
-                domain, service, {"entity_id": heater_id}, blocking=True
-            )
-        except Exception:  # noqa: BLE001 - a command that does not land is reported, never fatal
-            _LOGGER.warning("%s: the command to %s was refused", self._room, heater_id)
+        calls: list[tuple[str, dict[str, Any]]]
+        if is_a_thermostat(heater_id):
+            calls = [("set_hvac_mode", {"hvac_mode": HEAT if command.closed else OFF})]
+            if command.closed and command.setpoint is not None:
+                calls.append(("set_temperature", {ATTR_TEMPERATURE: command.setpoint}))
+        else:
+            calls = [("turn_on" if command.closed else "turn_off", {})]
+        for service, data in calls:
+            try:
+                await self.hass.services.async_call(
+                    domain, service, {"entity_id": heater_id, **data}, blocking=True
+                )
+            except Exception:  # noqa: BLE001 - a command that does not land is reported, not fatal
+                _LOGGER.warning("%s: the command to %s was refused", self._area_id, heater_id)

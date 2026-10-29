@@ -19,6 +19,10 @@ class Switched(StrEnum):
     OFF = "off"
 
 
+def _seconds(stored: dict[str, object], name: str, standing: timedelta) -> timedelta:
+    return timedelta(seconds=float(stored.get(name, standing.total_seconds())))  # type: ignore[arg-type]
+
+
 @dataclass(frozen=True, slots=True)
 class Regulation:
     behaviour: HoldingBehaviour = HoldingBehaviour.PACED
@@ -31,6 +35,27 @@ class Regulation:
     # What a mode is worth in a room with no reading at all. Only the planner sets it, and only for such
     # a room, so a room whose sensors have merely gone quiet still repeats its holding duty.
     switched: Switched | None = None
+
+    # What governs the room's own sensors. The reading rules take the first three and the freshness
+    # record the fourth.
+    sensor_freshness: timedelta = STANDARD.sensor_freshness
+    stuck_reading: timedelta = STANDARD.stuck_reading
+    sensor_spread: float = STANDARD.sensor_spread
+    freshness_record_retention: timedelta = STANDARD.freshness_record_retention
+
+    # What a blind thermostat room's off-phase writes. No frost limit leaves the device's own minimum.
+    frost_temperature: float = STANDARD.frost_protection
+    frost_limit: bool = True
+
+    # The slots the add-on names by hand. Nothing means the registry read stands for that slot.
+    # Deliberately outside `as_dict`: a restart drives what it discovers until the add-on names
+    # a slot again.
+    heaters: tuple[str, ...] | None = None
+    temperature_sensors: tuple[str, ...] | None = None
+    window_sensor: str | None = None
+    power_sensor: str | None = None
+    neighbour: str | None = None
+    outdoor_sensor: str | None = None
 
     @property
     def deliverable_floor(self) -> float:
@@ -86,6 +111,12 @@ class Regulation:
             "shortest_time_between_relay_changes": (
                 self.shortest_time_between_relay_changes.total_seconds()
             ),
+            "sensor_freshness": self.sensor_freshness.total_seconds(),
+            "stuck_reading": self.stuck_reading.total_seconds(),
+            "sensor_spread": self.sensor_spread,
+            "freshness_record_retention": self.freshness_record_retention.total_seconds(),
+            "frost_temperature": self.frost_temperature,
+            "frost_limit": self.frost_limit,
         }
 
     @classmethod
@@ -108,14 +139,21 @@ class Regulation:
                 full_output_below=float(
                     stored.get("full_output_below", standing.full_output_below)  # type: ignore[arg-type]
                 ),
-                shortest_time_between_relay_changes=timedelta(
-                    seconds=float(
-                        stored.get(
-                            "shortest_time_between_relay_changes",
-                            standing.shortest_time_between_relay_changes.total_seconds(),
-                        )  # type: ignore[arg-type]
-                    )
+                shortest_time_between_relay_changes=_seconds(
+                    stored,
+                    "shortest_time_between_relay_changes",
+                    standing.shortest_time_between_relay_changes,
                 ),
+                sensor_freshness=_seconds(stored, "sensor_freshness", standing.sensor_freshness),
+                stuck_reading=_seconds(stored, "stuck_reading", standing.stuck_reading),
+                sensor_spread=float(stored.get("sensor_spread", standing.sensor_spread)),  # type: ignore[arg-type]
+                freshness_record_retention=_seconds(
+                    stored, "freshness_record_retention", standing.freshness_record_retention
+                ),
+                frost_temperature=float(
+                    stored.get("frost_temperature", standing.frost_temperature)  # type: ignore[arg-type]
+                ),
+                frost_limit=bool(stored.get("frost_limit", standing.frost_limit)),
             )
         except (TypeError, ValueError):
             return standing

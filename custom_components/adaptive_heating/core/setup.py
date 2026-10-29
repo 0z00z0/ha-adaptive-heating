@@ -1,4 +1,4 @@
-"""What the setup dialog refuses, decided without Home Assistant in the way."""
+"""What a named heater set is refused for, decided without Home Assistant in the way."""
 
 from __future__ import annotations
 
@@ -9,6 +9,9 @@ def heater_already_claimed(
     heaters: Iterable[str], elsewhere: Mapping[str, Iterable[str]]
 ) -> tuple[str, str] | None:
     """The first heater another room already drives, and which room that is.
+
+    The rooms it is run over are the discovered ones, keyed by area id, each with the heaters it
+    actually drives.
 
     Two rooms over one relay run two loops, each counting only its own changes, so the shortest
     time between relay changes stops protecting anything. Measured at 384 commands a day against

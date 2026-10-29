@@ -70,9 +70,11 @@ class FreshnessRecord:
     def forget(self, sensor_id: str) -> None:
         self._sensors.pop(sensor_id, None)
 
-    def readings(self, sensor_ids: list[str], as_at: datetime) -> list[SensorReading]:
+    def readings(
+        self, sensor_ids: list[str], as_at: datetime, freshness: timedelta | None = None
+    ) -> list[SensorReading]:
         """One reading per sensor the room names. A sensor with no record counts as stale."""
-        stale = as_at - self._defaults.sensor_freshness - timedelta(seconds=1)
+        stale = as_at - (freshness or self._defaults.sensor_freshness) - timedelta(seconds=1)
         out: list[SensorReading] = []
         for sensor_id in sensor_ids:
             known = self._sensors.get(sensor_id)
@@ -86,8 +88,8 @@ class FreshnessRecord:
                 )
         return out
 
-    def prune(self, as_at: datetime) -> None:
-        cutoff = as_at - self._defaults.freshness_record_retention
+    def prune(self, as_at: datetime, retention: timedelta | None = None) -> None:
+        cutoff = as_at - (retention or self._defaults.freshness_record_retention)
         for sensor_id in [k for k, v in self._sensors.items() if v.reported_at < cutoff]:
             del self._sensors[sensor_id]
 

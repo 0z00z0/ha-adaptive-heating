@@ -3,21 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, time, timedelta
+from datetime import datetime, timedelta
 from enum import StrEnum
 
 from .defaults import STANDARD, Defaults
-
-
-def next_occurrence(wanted: time, now: datetime) -> datetime:
-    """The next moment the clock reads `wanted`: today where it is still ahead, tomorrow otherwise.
-
-    A deadline written as a time alone is how a person writes one, and the day it means is the next
-    day it comes round on. A profile entry's boundary is resolved the same way on the other side.
-    """
-    today = now.replace(hour=wanted.hour, minute=wanted.minute, second=wanted.second, microsecond=0)
-
-    return today if today > now else today + timedelta(days=1)
 
 
 class WarmUpOutcome(StrEnum):

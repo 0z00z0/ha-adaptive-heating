@@ -1,8 +1,8 @@
 """Every number the integration chooses rather than derives, in one place.
 
 The figures shared with the planner are mirrored from `PlannerDefaults` in
-`addon/src/AdaptiveHeating.Planner/`. The two copies drift, and a change to one is carried to the
-other by hand.
+`adaptive_heating/addon/src/AdaptiveHeating.Planner/`. The two copies drift, and a change to one
+is carried to the other by hand.
 """
 
 from __future__ import annotations
@@ -54,6 +54,16 @@ class Defaults:
     # window has stopped describing the room.
     blind_last_resort_fraction: float = 0.15
     longest_blind_spell: timedelta = timedelta(hours=24)
+
+    # A room over a thermostat measures its holding share from the device's own heating flag, over a
+    # stretch long enough to span the device's own on and off. Its blind off-phase writes the room's
+    # frost temperature, this house default until the add-on sends the room's own.
+    thermostat_holding_window: timedelta = timedelta(hours=1)
+    frost_protection: float = 5.0
+
+    # A thermostat underneath is written every pass. Under the 30-second clock, so every clock pass
+    # writes and a pass a sensor raised in between does not repeat a write the device already shows.
+    setpoint_rewrite_interval: timedelta = timedelta(seconds=25)
 
     # What a heater's meter has to read before the heater counts as having run, and how long each fault
     # waits. The draw and the ordinary window are stated; the long one, for a room with no reading, is

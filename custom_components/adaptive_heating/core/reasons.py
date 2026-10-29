@@ -1,7 +1,8 @@
-"""Why a room is not heating, written once.
+"""Why a room is not heating, and what a meter says is wrong.
 
-The card, the thermostat's own attributes and the answer an action call gets all read this table,
-so a person who asks two surfaces the same question gets one answer.
+The words a person reads live in the integration's strings file: each reason is a state of the
+room's own enum sensor, and each meter fault is a repairs issue. Only the sentences a refused
+action answers with are written here, because an action's answer is not translated.
 """
 
 from __future__ import annotations
@@ -24,17 +25,19 @@ class NotHeating(StrEnum):
     # What the three actions that need a number are refused with in such a room.
     THE_ROOM_HAS_NO_READING = "the_room_has_no_reading"
 
+    # A thermostat underneath that is unknown or unavailable. A switch has no such state of its own.
+    THE_HEATER_IS_NOT_ANSWERING = "the_heater_is_not_answering"
 
-# Short by design. Anything needing explanation sits behind an icon, never in the sentence.
-WORDS: dict[NotHeating, str] = {
+    # What a named heater set is refused with where another room already drives one of its heaters.
+    THE_HEATER_BELONGS_TO_ANOTHER_ROOM = "the_heater_belongs_to_another_room"
+
+
+# Only the reasons an action is refused with. A `Refused` raised with any other reason has no
+# sentence to answer under, and a test holds this table to the raise sites.
+REFUSAL_WORDS: dict[NotHeating, str] = {
     NotHeating.ROOM_IS_SWITCHED_OFF: "The room is switched off.",
-    NotHeating.WINDOW_IS_OPEN: "A window is open.",
-    NotHeating.NO_TEMPERATURE_READING: "No temperature reading.",
-    NotHeating.AT_TEMPERATURE: "At temperature.",
-    NotHeating.PACING_THE_CYCLE: "Pacing, heat due shortly.",
-    NotHeating.RELAY_GUARD_IS_HOLDING: "Relay held, switched recently.",
-    NotHeating.THE_MODE_SAYS_OFF: "Off, the mode says so.",
     NotHeating.THE_ROOM_HAS_NO_READING: "The room has no temperature reading.",
+    NotHeating.THE_HEATER_BELONGS_TO_ANOTHER_ROOM: "Another room already drives that heater.",
 }
 
 
@@ -45,12 +48,15 @@ class Fault(StrEnum):
     RELAY_STUCK_CLOSED = "relay_stuck_closed"
 
 
-# Worded as what was seen, never as a certain fault: a heater with a dial of its own draws nothing
-# once that dial is satisfied, and nothing the system reads tells that from a switch turned off.
-FAULT_WORDS: dict[Fault, str] = {
-    Fault.HEATER_DREW_NOTHING: "Switched on, drawing nothing.",
-    Fault.RELAY_STUCK_CLOSED: "Drawing power with the relay open.",
-}
+# A room over a thermostat has no relay to name, so the stuck-relay fault reads differently there.
+THERMOSTAT_DREW_POWER: str = "thermostat_drew_power"
+
+
+def issue_key(fault: Fault, over_a_thermostat: bool) -> str:
+    """Which words the repairs issue carries, by what heats the room."""
+    if fault is Fault.RELAY_STUCK_CLOSED and over_a_thermostat:
+        return THERMOSTAT_DREW_POWER
+    return str(fault)
 
 
 class Refused(Exception):
@@ -64,5 +70,5 @@ class Refused(Exception):
     """
 
     def __init__(self, reason: NotHeating) -> None:
-        super().__init__(WORDS[reason])
+        super().__init__(REFUSAL_WORDS[reason])
         self.reason = reason

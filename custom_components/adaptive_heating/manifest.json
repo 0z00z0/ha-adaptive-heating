@@ -1,6 +1,7 @@
 {
   "domain": "adaptive_heating",
   "name": "Adaptive Heating",
+  "categories": ["climate.thermostats_heating"],
   "version": "0.1.0",
   "documentation": "https://github.com/0z00z0/ha-adaptive-heating",
   "issue_tracker": "https://github.com/0z00z0/ha-adaptive-heating/issues",

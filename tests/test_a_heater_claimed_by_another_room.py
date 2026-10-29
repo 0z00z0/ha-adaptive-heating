@@ -12,6 +12,7 @@ import json
 import unittest
 
 from _core import COMPONENT
+from core.reasons import REFUSAL_WORDS, NotHeating
 from core.setup import heater_already_claimed
 
 
@@ -42,17 +43,22 @@ class AHeaterBelongsToOneRoomTests(unittest.TestCase):
         self.assertIsNone(heater_already_claimed(["switch.panel", "switch.panel"], {}))
 
 
-class TheWordsTheDialogUsesTests(unittest.TestCase):
-    """The reason has to name the room that holds the heater, or nobody can act on it."""
+class TheWordsTheHouseIsSetUpWithTests(unittest.TestCase):
+    """One entry, one confirm step, and a sentence short enough to read on a card."""
 
-    def test_both_dialogs_carry_the_refusal_and_it_names_the_room(self) -> None:
+    def test_both_string_files_offer_the_house_and_ask_for_nothing(self) -> None:
         for name in ("strings.json", "translations/en.json"):
             words = json.loads((COMPONENT / name).read_text(encoding="utf-8"))
-            for flow in ("config", "options"):
-                sentence = words[flow]["error"]["heater_taken"]
-                self.assertIn("{room}", sentence, f"{name} {flow}")
-                # Short by design: a label, not prose.
-                self.assertLess(len(sentence), 70, f"{name} {flow}")
+            self.assertNotIn("options", words, name)
+            step = words["config"]["step"]["user"]
+            self.assertNotIn("data", step, name)
+            # Short by design: a label, not prose.
+            self.assertLess(len(step["description"]), 70, name)
+
+    def test_the_refusal_a_named_heater_set_meets_is_short(self) -> None:
+        sentence = REFUSAL_WORDS[NotHeating.THE_HEATER_BELONGS_TO_ANOTHER_ROOM]
+
+        self.assertLess(len(sentence), 70)
 
 
 if __name__ == "__main__":

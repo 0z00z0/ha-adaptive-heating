@@ -23,6 +23,10 @@ class Stage(StrEnum):
     SWITCHED_ON = "switched_on"
     SWITCHED_OFF = "switched_off"
 
+    # A room over a thermostat, which is given a number instead of a share of a cycle. Blind, it
+    # repeats its holding duty as a relay does.
+    HOLDING_A_SETPOINT = "holding_a_setpoint"
+
 
 @dataclass(frozen=True, slots=True)
 class RelayObservation:
@@ -66,7 +70,71 @@ def duty_for(
     return min(max(outdoor_term + proportional, 0.0), 1.0), Stage.PACING
 
 
-class HeaterLoop:
+class RemembersHoldingDuties:
+    """The share of a cycle a room held each target at, which a blind room repeats.
+
+    Shared by both kinds of loop, so a room over a thermostat falls back exactly as one over a switch.
+    """
+
+    _defaults: Defaults
+    blind_since: datetime | None
+    cycle_started_at: datetime | None
+    stagger: timedelta
+
+    def _cycle_wants(self, now: datetime, duty: float, regulation: Regulation) -> bool:
+        """The cycle is the rhythm. The duty it is read against is the one computed just now.
+
+        Latching the duty at the start of a cycle delays a temperature a person has just set by
+        the remainder of that cycle, in both directions. The relay is protected by the shortest
+        time between changes, never by the duty standing still.
+        """
+        started = self.cycle_started_at
+        # Only the clock rolls a cycle over. A fraction that came out at nothing is a cycle running
+        # at
+        # nothing, and reading that as no cycle at all is what opened a relay mid-cycle upstream.
+        if started is None or now - started >= regulation.cycle_length:
+            self.cycle_started_at = now - (self.stagger % regulation.cycle_length)
+            started = self.cycle_started_at
+        elapsed = now - started
+        return elapsed < regulation.cycle_length * duty
+
+    def _start_remembering(self) -> None:
+        self._remembered: OrderedDict[float, float] = OrderedDict()
+
+    def remember(self, target: float, duty: float) -> None:
+        key = round(target, 1)
+        self._remembered[key] = duty
+        self._remembered.move_to_end(key)
+        while len(self._remembered) > self._defaults.remembered_holding_duties:
+            self._remembered.popitem(last=False)
+
+    def remembered_for(self, target: float) -> float | None:
+        return self._remembered.get(round(target, 1))
+
+    def _blind_too_long(self, now: datetime) -> bool:
+        return (
+            self.blind_since is not None
+            and now - self.blind_since >= self._defaults.longest_blind_spell
+        )
+
+    def _blind_duty(self, now: datetime, target: float, regulation: Regulation) -> float:
+        # Never stops heating. Remembered fraction, capped below full output; the fixed fraction
+        # once the spell outlasts the stretch the fraction was measured over.
+        remembered = None if self._blind_too_long(now) else self.remembered_for(target)
+        if remembered is None:
+            remembered = self._defaults.blind_last_resort_fraction
+        return min(max(remembered, 0.0), regulation.deliverable_ceiling)
+
+    def _remembered_as_dict(self) -> dict[str, float]:
+        return {str(k): v for k, v in self._remembered.items()}
+
+    def _restore_remembered(self, remembered: object) -> None:
+        if isinstance(remembered, dict):
+            for key, value in remembered.items():
+                self.remember(float(key), float(value))
+
+
+class HeaterLoop(RemembersHoldingDuties):
     """The loop for one heater. Heaters in the same room are staggered by their offset."""
 
     def __init__(
@@ -82,17 +150,7 @@ class HeaterLoop:
         self.last_change_at: datetime | None = None
         self.cycle_started_at: datetime | None = None
         self.blind_since: datetime | None = None
-        self._remembered: OrderedDict[float, float] = OrderedDict()
-
-    def remember(self, target: float, duty: float) -> None:
-        key = round(target, 1)
-        self._remembered[key] = duty
-        self._remembered.move_to_end(key)
-        while len(self._remembered) > self._defaults.remembered_holding_duties:
-            self._remembered.popitem(last=False)
-
-    def remembered_for(self, target: float) -> float | None:
-        return self._remembered.get(round(target, 1))
+        self._start_remembering()
 
     def see(self, observed: RelayObservation | None) -> None:
         """Take the relay's own state, and the relay's own clock, where the switch has both.
@@ -186,12 +244,6 @@ class HeaterLoop:
         elif self.blind_since is None:
             self.blind_since = now
 
-    def _blind_too_long(self, now: datetime) -> bool:
-        return (
-            self.blind_since is not None
-            and now - self.blind_since >= self._defaults.longest_blind_spell
-        )
-
     def _duty(
         self,
         now: datetime,
@@ -204,16 +256,7 @@ class HeaterLoop:
         if at_full_output:
             return 1.0, Stage.FULL_OUTPUT
         if room is None:
-            # The fallback never stops heating: it repeats the fraction this room was holding at
-            # this
-            # temperature, capped below full output, and falls to the fixed fraction once that
-            # figure
-            # has been repeated for longer than the stretch it was measured over.
-            remembered = None if self._blind_too_long(now) else self.remembered_for(target)
-            if remembered is None:
-                remembered = self._defaults.blind_last_resort_fraction
-            capped = min(max(remembered, 0.0), regulation.deliverable_ceiling)
-            return capped, Stage.REPEATING_THE_HOLDING_DUTY
+            return self._blind_duty(now, target, regulation), Stage.REPEATING_THE_HOLDING_DUTY
         return duty_for(room, target, outdoor, regulation, self._defaults)
 
     def _remember_what_was_held(
@@ -242,23 +285,6 @@ class HeaterLoop:
         if room >= target + half:
             return False
         return self.relay_closed
-
-    def _cycle_wants(self, now: datetime, duty: float, regulation: Regulation) -> bool:
-        """The cycle is the rhythm. The duty it is read against is the one computed just now.
-
-        Latching the duty at the start of a cycle delays a temperature a person has just set by
-        the remainder of that cycle, in both directions. The relay is protected by the shortest
-        time between changes, never by the duty standing still.
-        """
-        started = self.cycle_started_at
-        # Only the clock rolls a cycle over. A fraction that came out at nothing is a cycle running
-        # at
-        # nothing, and reading that as no cycle at all is what opened a relay mid-cycle upstream.
-        if started is None or now - started >= regulation.cycle_length:
-            self.cycle_started_at = now - (self.stagger % regulation.cycle_length)
-            started = self.cycle_started_at
-        elapsed = now - started
-        return elapsed < regulation.cycle_length * duty
 
     def _apply(
         self,
@@ -320,7 +346,7 @@ class HeaterLoop:
             "cycle_started_at": None if self.cycle_started_at is None
             else self.cycle_started_at.isoformat(),
             "blind_since": None if self.blind_since is None else self.blind_since.isoformat(),
-            "remembered": {str(k): v for k, v in self._remembered.items()},
+            "remembered": self._remembered_as_dict(),
         }
 
     def restore(self, stored: dict[str, object] | None) -> None:
@@ -341,9 +367,6 @@ class HeaterLoop:
             # cannot repeat one fraction for a week.
             blind = stored.get("blind_since")
             self.blind_since = None if blind is None else datetime.fromisoformat(str(blind))
-            remembered = stored.get("remembered") or {}
-            if isinstance(remembered, dict):
-                for key, value in remembered.items():
-                    self.remember(float(key), float(value))
+            self._restore_remembered(stored.get("remembered"))
         except (TypeError, ValueError):
             return

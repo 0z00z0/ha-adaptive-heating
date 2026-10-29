@@ -2,50 +2,55 @@
   "config": {
     "step": {
       "user": {
-        "title": "Add a room",
-        "description": "A room needs at least one heater. Without temperature sensors of its own it borrows a neighbour's reading.",
-        "data": {
-          "room": "Room name",
-          "heaters": "Heaters",
-          "temperature_sensors": "Temperature sensors",
-          "neighbour": "Borrow the reading from",
-          "window_sensor": "Window sensor",
-          "outdoor_sensor": "Outdoor sensor",
-          "power_sensor": "Power meter"
-        },
-        "data_description": {
-          "heaters": "Every switch this room heats with. One loop runs per heater.",
-          "temperature_sensors": "The room's own sensors. The reading is their average.",
-          "neighbour": "Used only where the room has no sensor of its own.",
-          "window_sensor": "Heating stops while this says open.",
-          "outdoor_sensor": "Sets how hard the room fires while it holds.",
-          "power_sensor": "Confirms the heater actually ran. A room without one behaves exactly as this one does."
-        }
+        "title": "Adaptive Heating",
+        "description": "Rooms are the Areas with a heater labelled heating."
       }
-    },
-    "error": {
-      "no_heater": "A room needs at least one heater.",
-      "heater_taken": "{room} already drives that heater."
     }
   },
-  "options": {
-    "step": {
-      "init": {
-        "title": "Change the room",
-        "data": {
-          "room": "Room name",
-          "heaters": "Heaters",
-          "temperature_sensors": "Temperature sensors",
-          "neighbour": "Borrow the reading from",
-          "window_sensor": "Window sensor",
-          "outdoor_sensor": "Outdoor sensor",
-          "power_sensor": "Power meter"
+  "entity": {
+    "climate": {
+      "room": {
+        "state_attributes": {
+          "preset_mode": {
+            "state": {
+              "planned_to_arrive": "Planned to arrive",
+              "on_the_way": "On the way",
+              "temporarily_away": "Temporarily away"
+            }
+          }
         }
       }
     },
-    "error": {
-      "no_heater": "A room needs at least one heater.",
-      "heater_taken": "{room} already drives that heater."
+    "sensor": {
+      "not_heating_because": {
+        "name": "Reason",
+        "state": {
+          "room_is_switched_off": "Switched off",
+          "window_is_open": "Window open",
+          "no_temperature_reading": "No reading",
+          "at_temperature": "At temperature",
+          "pacing_the_cycle": "Pacing the cycle",
+          "relay_guard_is_holding": "Relay held",
+          "the_mode_says_off": "Off by the mode",
+          "the_room_has_no_reading": "Room has no sensor",
+          "the_heater_is_not_answering": "Heater not answering",
+          "the_heater_belongs_to_another_room": "Heater driven elsewhere"
+        }
+      }
+    }
+  },
+  "issues": {
+    "heater_drew_nothing": {
+      "title": "Heater drawing nothing",
+      "description": "{room} is switched on and drawing no power."
+    },
+    "relay_stuck_closed": {
+      "title": "Relay stuck closed",
+      "description": "{room} is drawing power with the relay open."
+    },
+    "thermostat_drew_power": {
+      "title": "Thermostat drawing power",
+      "description": "{room} is drawing power while switched off."
     }
   },
   "selector": {
@@ -59,6 +64,12 @@
       "options": {
         "on": "On",
         "off": "Off"
+      }
+    },
+    "frost_limit": {
+      "options": {
+        "on": "The frost temperature holds",
+        "off": "No limit"
       }
     }
   },
@@ -136,12 +147,84 @@
         "switched": {
           "name": "Switched",
           "description": "On or off for a room with no temperature reading. Its own dial holds the temperature."
+        },
+        "sensor_freshness": {
+          "name": "Sensor freshness",
+          "description": "How long a reading stays usable."
+        },
+        "stuck_reading": {
+          "name": "Stuck reading",
+          "description": "How long a flat reading may stand before it is left out."
+        },
+        "sensor_spread": {
+          "name": "Sensor spread",
+          "description": "How far a reading may sit from the others in its room."
+        },
+        "freshness_record_retention": {
+          "name": "Keep sensor records for",
+          "description": "How long a quiet sensor is remembered."
+        },
+        "heaters": {
+          "name": "Heaters",
+          "description": "This room's heaters. Replaces what was discovered."
+        },
+        "temperature_sensors": {
+          "name": "Temperature sensors",
+          "description": "This room's sensors. Replaces what was discovered."
+        },
+        "window_sensor": {
+          "name": "Window sensor",
+          "description": "Heating stops while this says open."
+        },
+        "power_sensor": {
+          "name": "Power meter",
+          "description": "Confirms the heater actually ran."
+        },
+        "neighbour": {
+          "name": "Borrow the reading from",
+          "description": "Used only where the room has no sensor of its own."
+        },
+        "outdoor_sensor": {
+          "name": "Outdoor sensor",
+          "description": "Sets how hard the room fires while it holds."
+        },
+        "frost_temperature": {
+          "name": "Frost temperature",
+          "description": "What a thermostat underneath is set to while the room runs without a reading and rests between heats."
+        },
+        "frost_limit": {
+          "name": "Frost limit",
+          "description": "Off leaves only the thermostat's own lowest setting."
         }
       }
     },
     "return_to_target": {
       "name": "Return the room to its target",
       "description": "Ends any warm-up and any timed hold. The room holds the temperature it was last set."
+    },
+    "move_to_area": {
+      "name": "Move the room to another area",
+      "description": "The room keeps its thermostat, its history and what it has learnt, and finds its heaters in the new area. Refused where another room is already there.",
+      "fields": {
+        "area": {
+          "name": "Area",
+          "description": "The area the room moves to."
+        }
+      }
+    },
+    "set_labels": {
+      "name": "Set the labels that find the rooms",
+      "description": "Which label a heater carries to make its area a room, and which label keeps an entity out. Sent by the add-on from its House tab.",
+      "fields": {
+        "include_label": {
+          "name": "Include label",
+          "description": "The label id a heater or temperature sensor carries. Empty finds every one."
+        },
+        "exclude_label": {
+          "name": "Exclude label",
+          "description": "The label id that keeps an entity or an area out, whatever else it carries."
+        }
+      }
     }
   }
 }
