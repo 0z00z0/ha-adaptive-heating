@@ -2,13 +2,13 @@
   "domain": "adaptive_heating",
   "name": "Adaptive Heating",
   "categories": ["climate.thermostats_heating"],
-  "version": "0.1.0",
-  "documentation": "https://github.com/0z00z0/ha-adaptive-heating",
-  "issue_tracker": "https://github.com/0z00z0/ha-adaptive-heating/issues",
   "codeowners": ["@0z00z0"],
   "config_flow": true,
-  "iot_class": "local_push",
-  "integration_type": "device",
   "dependencies": [],
-  "requirements": []
+  "documentation": "https://github.com/0z00z0/ha-adaptive-heating",
+  "integration_type": "device",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/0z00z0/ha-adaptive-heating/issues",
+  "requirements": [],
+  "version": "0.1.0"
 }
