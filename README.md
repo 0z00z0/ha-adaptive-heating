@@ -60,10 +60,26 @@
 
 The integration gives each room a thermostat. The app holds the schedule and settings.
 
-1. In **Settings → Marketplace**, install **Adaptive Heating**.
-2. Open **Settings → Apps → Repositories** and add `https://github.com/0z00z0/ha-adaptive-heating-app`, or [add it in one step](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2F0z00z0%2Fha-adaptive-heating-app).
-3. Install the app and start it.
-4. Give each room's heaters and temperature sensors the label `heating`.
+1. Open Adaptive Heating in the Marketplace with [this link](https://my.home-assistant.io/redirect/marketplace_repository/?owner=0z00z0&repository=ha-adaptive-heating&category=integration).\
+   Without the link, search for it under **Settings → Marketplace**.\
+   If it is not there, select **Add from link** and enter `0z00z0/ha-adaptive-heating`.\
+   The Marketplace may ask to connect a GitHub account.
+
+2. Select **Install**, then **Install** again to confirm.\
+   The setup opens. Select **Submit**.\
+   If it does not open, add it under **Settings → Devices & services → Add integration**.
+
+3. Give each room's heaters and temperature sensors the label `heating`.\
+   Each heater must be in its room's area.
+
+4. Add the app repository with [this link](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2F0z00z0%2Fha-adaptive-heating-app).\
+   Without the link, open **Settings → Apps → Install app → ⋮ → Repositories**.\
+   Add `https://github.com/0z00z0/ha-adaptive-heating-app`.
+
+5. Open **Adaptive Heating** in the app store. Select **Install**, then **Start**.\
+   Installing can take several minutes.
+
+6. Turn on **Show in sidebar**. Open **Heating** in the sidebar.
 
 Needs Home Assistant 2026.11 or newer. The app also needs the Supervisor and a 64-bit board.
 
