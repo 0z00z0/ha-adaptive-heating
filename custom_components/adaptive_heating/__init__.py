@@ -41,6 +41,7 @@ from .core.identity import (
     refuse_move,
 )
 from .core.rooms import Candidate, Room, changed, rooms
+from .core.setup import labels_after_the_call
 
 __all__ = ["DOMAIN", "VOCABULARY_VERSION"]
 
@@ -96,9 +97,11 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     labels: Store = Store(hass, STORAGE_VERSION, LABELS_STORAGE_KEY)
 
     async def set_labels(call: ServiceCall) -> None:
-        include = call.data.get("include_label", HEATING_LABEL)
-        exclude = call.data.get("exclude_label") or EXCLUDE_LABEL
-        await labels.async_save({"include_label": include, "exclude_label": exclude})
+        after = labels_after_the_call(
+            await labels.async_load() or {}, call.data, HEATING_LABEL, EXCLUDE_LABEL
+        )
+        include, exclude = after["include_label"], after["exclude_label"]
+        await labels.async_save(after)
         for entry in hass.config_entries.async_entries(DOMAIN):
             # An entry not yet set up has no house; it reads the store above when it is.
             house = getattr(entry, "runtime_data", None)

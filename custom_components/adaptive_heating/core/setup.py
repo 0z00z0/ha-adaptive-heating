@@ -55,3 +55,49 @@ def labels_to_write(
         if label in before and entity_id not in written:
             written[entity_id] = before - {label}
     return written
+
+
+def labels_after_the_call(
+    stored: Mapping[str, str], sent: Mapping[str, str], default_include: str, default_exclude: str
+) -> dict[str, str]:
+    """Both label ids after a set_labels call.
+
+    An add-on with no label picked sends no include label, and the one the first setup chose stays.
+    """
+    if "include_label" in sent:
+        include = sent["include_label"]
+    else:
+        include = stored.get("include_label", default_include)
+    exclude = sent.get("exclude_label") or default_exclude
+    return {"include_label": include, "exclude_label": exclude}
+
+
+def label_the_setup_offers(
+    stored: Mapping[str, str], existing: Iterable[str], default: str
+) -> tuple[str | None, bool]:
+    """The label id the first setup starts from, and whether it may be changed there.
+
+    A label the add-on already sent is its to change, so the setup shows it and offers no choice.
+    """
+    if stored.get("include_label"):
+        return stored["include_label"], False
+    return (default if default in set(existing) else None), True
+
+
+def every_heater(
+    candidates: Iterable[tuple[str, str, str | None, str | None]],
+    heater_domains: Iterable[str],
+    own_platform: str,
+) -> list[str]:
+    """Every heater the "start from every heater" choice ticks.
+
+    Each candidate is (entity id, domain, platform, area id).
+
+    An entity with no area makes no room, and this integration's own thermostats are never heaters.
+    """
+    domains = set(heater_domains)
+    return sorted(
+        entity_id
+        for entity_id, domain, platform, area in candidates
+        if domain in domains and platform != own_platform and area
+    )

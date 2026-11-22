@@ -1,25 +1,56 @@
 {
   "config": {
     "step": {
+      "user": {
+        "title": "Rom",
+        "description": "Etiketten kommer først; rommene dukker så opp av seg selv.",
+        "menu_options": {
+          "rooms": "Velg varmekilder selv",
+          "every_heater": "Start med alle varmekilder"
+        }
+      },
       "rooms": {
+        "title": "Rom",
+        "data": {
+          "label": "Varmeetikett",
+          "heaters": "Varmekilder",
+          "temperature_sensors": "Temperaturfølere"
+        },
+        "data_description": {
+          "label": "Velg eller lag den først. Alt som krysses av nedenfor, får den.",
+          "heaters": "Hvert område blir et rom. Lamper og stikkontakter kan være krysset av; fjern dem.",
+          "temperature_sensors": "Leses av rommet i følerens område."
+        }
+      },
+      "rooms_labelled": {
+        "description": "Etikett: {label}. Endres under fanen Hus i tillegget.",
         "title": "Rom",
         "data": {
           "heaters": "Varmekilder",
           "temperature_sensors": "Temperaturfølere"
         },
         "data_description": {
-          "heaters": "Området til hver varmekilde blir et rom. Oppsettet gir den etiketten heating.",
+          "heaters": "Hvert område blir et rom. Lamper og stikkontakter kan være krysset av; fjern dem.",
           "temperature_sensors": "Leses av rommet i følerens område."
         }
       },
       "reconfigure": {
         "title": "Rom",
+        "description": "Etikett: {label}. Endres under fanen Hus i tillegget.",
+        "menu_options": {
+          "reconfigure_rooms": "Velg varmekilder selv",
+          "reconfigure_every_heater": "Start med alle varmekilder"
+        }
+      },
+      "reconfigure_rooms": {
+        "description": "Etikett: {label}. Endres under fanen Hus i tillegget.",
+        "title": "Rom",
         "data": {
           "heaters": "Varmekilder",
           "temperature_sensors": "Temperaturfølere"
         },
         "data_description": {
-          "heaters": "Hver varmekildes område blir et rom. Det som ikke er valgt, mister etiketten heating.",
+          "heaters": "Det som ikke er krysset av, mister etiketten. Fjern lamper og stikkontakter.",
           "temperature_sensors": "Leses av rommet i følerens område."
         }
       }

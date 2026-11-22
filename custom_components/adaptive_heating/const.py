@@ -44,16 +44,15 @@ VOCABULARY_VERSION: Final = 2
 # The same string as manifest.json's version, which a test holds the two to. The thermostat publishes it, so
 # the add-on can tell this integration's thermostats from every other one in the house and the settings page
 # can state what each half is running.
-INTEGRATION_VERSION: Final = "0.3.0"
+INTEGRATION_VERSION: Final = "0.4.0"
 
 PLATFORMS: Final = ["climate", "sensor"]
 
 # Both are matched against a label's id and never its name. Home Assistant slugifies the name a
 # person types into the id, so a label named "Heating" arrives here as "heating".
 
-# What puts a room on both halves until the add-on says otherwise: an Area holding a heater carrying
-# this label. A room's temperature sensors carry the same one. The House tab's choice replaces both
-# through the set_labels action.
+# The label id the first setup offers where the house has it. The stored label, set at the first setup
+# or by the add-on's House tab through set_labels, is what rooms are found by.
 HEATING_LABEL: Final = "heating"
 
 # The label the lighting engine honours too, so a household running both meets one behaviour.

@@ -1,6 +1,6 @@
 [project]
 name = "adaptive-heating"
-version = "0.3.0"
+version = "0.4.0"
 description = "The Home Assistant half of Adaptive Heating: a thermostat per room."
 requires-python = ">=3.13"
 license = { text = "MIT" }

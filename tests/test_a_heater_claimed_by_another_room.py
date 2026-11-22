@@ -46,13 +46,18 @@ class AHeaterBelongsToOneRoomTests(unittest.TestCase):
 class TheWordsTheHouseIsSetUpWithTests(unittest.TestCase):
     """One entry, one picker step, and field words short enough to read on a card."""
 
-    def test_every_string_file_asks_only_for_heaters_and_sensors_in_short_words(self) -> None:
+    def test_only_the_first_setup_asks_for_the_label_and_every_step_in_short_words(self) -> None:
+        asked = {
+            "rooms": {"label", "heaters", "temperature_sensors"},
+            "rooms_labelled": {"heaters", "temperature_sensors"},
+            "reconfigure_rooms": {"heaters", "temperature_sensors"},
+        }
         for name in ("strings.json", "translations/en.json", "translations/nb.json"):
             words = json.loads((COMPONENT / name).read_text(encoding="utf-8"))
             self.assertNotIn("options", words, name)
-            for step_id in ("rooms", "reconfigure"):
+            for step_id, fields in asked.items():
                 step = words["config"]["step"][step_id]
-                self.assertEqual(set(step["data"]), {"heaters", "temperature_sensors"}, name)
+                self.assertEqual(set(step["data"]), fields, name)
                 # Short by design: a label, not prose.
                 for sentence in step["data_description"].values():
                     self.assertLess(len(sentence), 90, name)

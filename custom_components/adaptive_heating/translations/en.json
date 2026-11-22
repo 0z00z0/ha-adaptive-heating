@@ -1,25 +1,56 @@
 {
   "config": {
     "step": {
+      "user": {
+        "title": "Rooms",
+        "description": "The label comes first; rooms then appear on their own.",
+        "menu_options": {
+          "rooms": "Pick heaters myself",
+          "every_heater": "Start from every heater"
+        }
+      },
       "rooms": {
+        "title": "Rooms",
+        "data": {
+          "label": "Heating label",
+          "heaters": "Heaters",
+          "temperature_sensors": "Temperature sensors"
+        },
+        "data_description": {
+          "label": "Pick or create it first. Everything ticked below gets it.",
+          "heaters": "Each area becomes a room. Lamps and sockets may be ticked; untick them.",
+          "temperature_sensors": "Read by the room in the sensor's area."
+        }
+      },
+      "rooms_labelled": {
+        "description": "Label: {label}. Changed on the add-on's House tab.",
         "title": "Rooms",
         "data": {
           "heaters": "Heaters",
           "temperature_sensors": "Temperature sensors"
         },
         "data_description": {
-          "heaters": "Each heater's area becomes a room. The setup labels it heating.",
+          "heaters": "Each area becomes a room. Lamps and sockets may be ticked; untick them.",
           "temperature_sensors": "Read by the room in the sensor's area."
         }
       },
       "reconfigure": {
         "title": "Rooms",
+        "description": "Label: {label}. Changed on the add-on's House tab.",
+        "menu_options": {
+          "reconfigure_rooms": "Pick heaters myself",
+          "reconfigure_every_heater": "Start from every heater"
+        }
+      },
+      "reconfigure_rooms": {
+        "description": "Label: {label}. Changed on the add-on's House tab.",
+        "title": "Rooms",
         "data": {
           "heaters": "Heaters",
           "temperature_sensors": "Temperature sensors"
         },
         "data_description": {
-          "heaters": "Each heater's area becomes a room. Anything unticked loses the label heating.",
+          "heaters": "Unticked ones lose the label. Lamps and sockets may be ticked; untick them.",
           "temperature_sensors": "Read by the room in the sensor's area."
         }
       }

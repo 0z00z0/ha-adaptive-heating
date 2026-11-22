@@ -37,6 +37,8 @@ ATTR_ROOM_ID: Final = "room_id"
 ATTR_AREA_ID: Final = "area_id"
 ATTR_INTEGRATION_VERSION: Final = "integration_version"
 ATTR_VOCABULARY_VERSION: Final = "vocabulary_version"
+# The label id rooms are found by. An add-on with none picked takes it once.
+ATTR_INCLUDE_LABEL: Final = "include_label"
 
 # What the add-on drives a room from: whether a mode is worth a temperature here or on and off, what the
 # loop read outside, and when this room's temperature was last set.
@@ -81,6 +83,7 @@ EVERY_ATTRIBUTE: Final = frozenset(
         ATTR_AREA_ID,
         ATTR_INTEGRATION_VERSION,
         ATTR_VOCABULARY_VERSION,
+        ATTR_INCLUDE_LABEL,
         ATTR_STAGE,
         ATTR_DUTY,
         ATTR_DUTY_ASKED_FOR,
@@ -153,6 +156,7 @@ def attributes(
     reading: RoomReading,
     outdoor: float | None,
     has_a_power_meter: bool,
+    include_label: str = "",
 ) -> dict[str, Any]:
     warm_up = thermostat.warm_up
     has_a_duty = decision is not None and decision.has_a_duty
@@ -168,6 +172,7 @@ def attributes(
         ATTR_AREA_ID: area_id,
         ATTR_INTEGRATION_VERSION: integration_version,
         ATTR_VOCABULARY_VERSION: vocabulary_version,
+        ATTR_INCLUDE_LABEL: include_label,
         ATTR_STAGE: None if decision is None else str(decision.stage),
         # What the relay was held for, which is the figure anything learning from a cycle reads.
         # The request stands beside it so the law can still be followed. A room over a thermostat

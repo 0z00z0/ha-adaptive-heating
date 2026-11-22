@@ -190,6 +190,7 @@ class AdaptiveHeatingThermostat(ClimateEntity):
             self._reading,
             self._outdoor_now,
             self._power_sensor is not None,
+            self._entry.runtime_data.include_label,
         )
 
     async def async_added_to_hass(self) -> None:

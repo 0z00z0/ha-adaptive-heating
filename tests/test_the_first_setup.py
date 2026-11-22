@@ -6,7 +6,13 @@ from __future__ import annotations
 import unittest
 
 import _core  # noqa: F401
-from core.setup import labels_to_write, without_an_area
+from core.setup import (
+    every_heater,
+    label_the_setup_offers,
+    labels_after_the_call,
+    labels_to_write,
+    without_an_area,
+)
 
 
 class TheFirstSetupTests(unittest.TestCase):
@@ -45,6 +51,44 @@ class TheFirstSetupTests(unittest.TestCase):
             {"switch.panel": {"heating"}},
         )
 
+
+class TheLabelRoomsAreFoundByTests(unittest.TestCase):
+    """The first setup picks the label, and an add-on with none picked never takes it away."""
+
+    def test_an_add_on_with_no_label_picked_leaves_the_setups_label_in_place(self) -> None:
+        stored = {"include_label": "heat", "exclude_label": "adaptive_exclude"}
+        sent_nothing = {"exclude_label": "adaptive_exclude"}
+
+        unpicked = labels_after_the_call(stored, sent_nothing, "heating", "adaptive_exclude")
+        picked = labels_after_the_call(stored, {"include_label": "varme"}, "heating", "adaptive_exclude")
+
+        self.assertEqual(unpicked["include_label"], "heat")
+        self.assertEqual(picked["include_label"], "varme")
+
+    def test_a_label_the_add_on_already_sent_is_shown_and_not_offered(self) -> None:
+        existing = ["heat", "heating"]
+
+        self.assertEqual(label_the_setup_offers({"include_label": "heat"}, existing, "heating"), ("heat", False))
+        self.assertEqual(label_the_setup_offers({}, existing, "heating"), ("heating", True))
+        self.assertEqual(label_the_setup_offers({}, ["heat"], "heating"), (None, True))
+
+
+class EveryHeaterTests(unittest.TestCase):
+    def test_every_heater_with_an_area_is_ticked_and_our_own_and_homeless_ones_are_not(self) -> None:
+        ticked = every_heater(
+            [
+                ("switch.socket", "switch", "shelly", "stue"),
+                ("input_boolean.panel", "input_boolean", None, "bad"),
+                ("climate.floor", "climate", "zha", "bad"),
+                ("climate.stue", "climate", "adaptive_heating", "stue"),
+                ("switch.loose", "switch", "shelly", None),
+                ("light.lamp", "light", "hue", "stue"),
+            ],
+            ("switch", "input_boolean", "climate"),
+            "adaptive_heating",
+        )
+
+        self.assertEqual(ticked, ["climate.floor", "input_boolean.panel", "switch.socket"])
 
 if __name__ == "__main__":
     unittest.main()
