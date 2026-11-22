@@ -243,6 +243,11 @@ set_regulation:
           min: 0
           max: 5
           step: 0.01
+    left_out:
+      required: false
+      selector:
+        entity:
+          multiple: true
 
 return_to_target:
   target:

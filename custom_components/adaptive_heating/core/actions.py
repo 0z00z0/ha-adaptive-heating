@@ -207,6 +207,8 @@ ACTIONS: tuple[Action, ...] = (
             Field("floor_sensor", "entity"),
             Field("floor_limit", "number", False, 15.0, 40.0, 0.5),
             Field("floor_rise_per_degree", "number", False, 0.0, 5.0, 0.01),
+            # Present means the call names every room slot; one it omits goes back to discovered.
+            Field("left_out", "entities"),
         ),
     ),
     Action(RETURN_TO_TARGET),

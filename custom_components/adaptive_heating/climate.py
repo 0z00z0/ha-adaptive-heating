@@ -206,10 +206,9 @@ class AdaptiveHeatingThermostat(ClimateEntity):
 
         stored = await self._store.async_load()
         self._thermostat.restore(stored, dt_util.utcnow())
-        # The one slot kept across a restart: a floor-limited room must not run without its floor cut.
-        self._floor_sensor = self._thermostat.regulation.floor_sensor
-
-        self._watch_what_the_room_reads()
+        # The floor sensor and what was left out by hand are kept across a restart; the rest waits for
+        # the add-on.
+        self._follow_the_named_slots()
         self.async_on_remove(
             async_track_time_interval(self.hass, self._on_the_clock, EVALUATION_INTERVAL)
         )
@@ -372,9 +371,11 @@ class AdaptiveHeatingThermostat(ClimateEntity):
     def _follow_the_named_slots(self) -> None:
         """A slot the add-on named is that slot's whole set; the registry read stands elsewhere."""
         regulation = self._thermostat.regulation
-        self._heaters = named_or_discovered(regulation.heaters, self._discovered_heaters)
+        self._heaters = named_or_discovered(
+            regulation.heaters, self._discovered_heaters, regulation.left_out
+        )
         self._sensors = named_or_discovered(
-            regulation.temperature_sensors, self._discovered_sensors
+            regulation.temperature_sensors, self._discovered_sensors, regulation.left_out
         )
         self._window_sensor = regulation.window_sensor
         self._power_sensor = regulation.power_sensor

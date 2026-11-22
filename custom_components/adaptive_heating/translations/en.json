@@ -3,7 +3,6 @@
     "step": {
       "user": {
         "title": "Rooms",
-        "description": "The label comes first; rooms then appear on their own.",
         "menu_options": {
           "rooms": "Pick heaters myself",
           "every_heater": "Start from every heater"
@@ -18,39 +17,39 @@
         },
         "data_description": {
           "label": "Pick or create it first. Everything ticked below gets it.",
-          "heaters": "Each area becomes a room. Lamps and sockets may be ticked; untick them.",
+          "heaters": "One room per area. Untick lamps and sockets.",
           "temperature_sensors": "Read by the room in the sensor's area."
         }
       },
       "rooms_labelled": {
-        "description": "Label: {label}. Changed on the add-on's House tab.",
+        "description": "Label: {label}. Change it on the app's House tab.",
         "title": "Rooms",
         "data": {
           "heaters": "Heaters",
           "temperature_sensors": "Temperature sensors"
         },
         "data_description": {
-          "heaters": "Each area becomes a room. Lamps and sockets may be ticked; untick them.",
+          "heaters": "One room per area. Untick lamps and sockets.",
           "temperature_sensors": "Read by the room in the sensor's area."
         }
       },
       "reconfigure": {
         "title": "Rooms",
-        "description": "Label: {label}. Changed on the add-on's House tab.",
+        "description": "Label: {label}. Change it on the app's House tab.",
         "menu_options": {
           "reconfigure_rooms": "Pick heaters myself",
           "reconfigure_every_heater": "Start from every heater"
         }
       },
       "reconfigure_rooms": {
-        "description": "Label: {label}. Changed on the add-on's House tab.",
+        "description": "Label: {label}. Change it on the app's House tab.",
         "title": "Rooms",
         "data": {
           "heaters": "Heaters",
           "temperature_sensors": "Temperature sensors"
         },
         "data_description": {
-          "heaters": "Unticked ones lose the label. Lamps and sockets may be ticked; untick them.",
+          "heaters": "Unticked heaters lose the label. Untick lamps and sockets.",
           "temperature_sensors": "Read by the room in the sensor's area."
         }
       }
@@ -104,7 +103,7 @@
     },
     "relay_stuck_closed": {
       "title": "Relay stuck closed",
-      "description": "{room} is drawing power with the relay open."
+      "description": "{room} is drawing power with the relay switched off."
     },
     "thermostat_drew_power": {
       "title": "Thermostat drawing power",
@@ -146,7 +145,7 @@
   "services": {
     "warm_room_by": {
       "name": "Warm the room to a temperature by a time",
-      "description": "Starts the room early enough to be at the temperature by the time given, and runs at full output until it is there.",
+      "description": "Starts early enough to reach the temperature on time. Runs at full output until then.",
       "fields": {
         "temperature": {
           "name": "Temperature",
@@ -154,13 +153,13 @@
         },
         "by_time": {
           "name": "Wanted by",
-          "description": "When the room is to be at that temperature. A time alone means the next time it comes round."
+          "description": "When the temperature is wanted. A time alone means its next occurrence."
         }
       }
     },
     "hold_temperature": {
-      "name": "Hold the room at a temperature until it expires",
-      "description": "Holds the temperature for the time given, then falls back to the room's target.",
+      "name": "Hold the room at a temperature",
+      "description": "Holds for the duration, then returns to the room's target.",
       "fields": {
         "temperature": {
           "name": "Temperature",
@@ -174,7 +173,7 @@
     },
     "set_warming_rate": {
       "name": "Set how fast the room warms",
-      "description": "The rate the room works backwards from when it is given a deadline.",
+      "description": "Used to plan the start when a deadline is given.",
       "fields": {
         "degrees_per_hour": {
           "name": "Degrees per hour",
@@ -188,7 +187,7 @@
     },
     "set_regulation": {
       "name": "Set how the room is regulated",
-      "description": "The numbers the room's loop runs on until it is given others.",
+      "description": "The settings the room regulates by, until changed.",
       "fields": {
         "behaviour": {
           "name": "Holding behaviour",
@@ -208,7 +207,7 @@
         },
         "full_output_below": {
           "name": "Full output below",
-          "description": "How far below target the room runs flat out."
+          "description": "How far below target the room runs at full output."
         },
         "shortest_time_between_relay_changes": {
           "name": "Shortest time between relay changes",
@@ -260,7 +259,7 @@
         },
         "frost_temperature": {
           "name": "Frost temperature",
-          "description": "What a thermostat underneath is set to while the room runs without a reading and rests between heats."
+          "description": "Thermostat setting while the room has no reading or rests between heats."
         },
         "frost_limit": {
           "name": "Frost limit",
@@ -297,16 +296,20 @@
         "floor_rise_per_degree": {
           "name": "Floor rise per degree",
           "description": "Floor above air, per degree air above outdoors."
+        },
+        "left_out": {
+          "name": "Left out",
+          "description": "Never driven or read, even when found."
         }
       }
     },
     "return_to_target": {
       "name": "Return the room to its target",
-      "description": "Ends any warm-up and any timed hold. The room holds the temperature it was last set."
+      "description": "Ends warm-up and timed hold. The room holds its last set temperature."
     },
     "move_to_area": {
       "name": "Move the room to another area",
-      "description": "The room keeps its thermostat, its history and what it has learnt, and finds its heaters in the new area. Refused where another room is already there.",
+      "description": "Keeps thermostat, history and learning; heaters come from the new area. Refused if the area has a room.",
       "fields": {
         "area": {
           "name": "Area",
@@ -316,7 +319,7 @@
     },
     "set_labels": {
       "name": "Set the labels that find the rooms",
-      "description": "Which label a heater carries to make its area a room, and which label keeps an entity out. Sent by the add-on from its House tab.",
+      "description": "Labels that find rooms and keep entities out. Sent by the app's House tab.",
       "fields": {
         "include_label": {
           "name": "Include label",

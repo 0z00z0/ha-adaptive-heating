@@ -14,6 +14,7 @@ from .loop import HeaterLoop, LoopDecision, RelayObservation, Stage
 from .power import PowerWatch
 from .reasons import Fault, NotHeating, Refused
 from .regulation import (
+    ROOM_SLOTS,
     BandLearning,
     HoldingBehaviour,
     Regulation,
@@ -211,9 +212,14 @@ class RoomThermostat:
             known["room_type"] = RoomType(str(known["room_type"]))
         if "slow_model" in known:
             known["slow_model"] = SlowModel(str(known["slow_model"]))
-        for slot in ("heaters", "temperature_sensors"):
+        for slot in ("heaters", "temperature_sensors", "left_out"):
             if slot in known:
                 known[slot] = tuple(known[slot])  # type: ignore[call-overload]
+        # A call carrying `left_out` describes every room slot, so one it leaves out goes back to
+        # discovered, or to none. An omitted field is never sent as null.
+        if "left_out" in known:
+            for slot in ROOM_SLOTS:
+                known.setdefault(slot, None)
         if "band" in known:
             self.band_learning.set(float(known["band"]))  # type: ignore[arg-type]
             known["band"] = self.band_learning.in_force

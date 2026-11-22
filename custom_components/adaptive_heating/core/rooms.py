@@ -160,9 +160,14 @@ def _one_per_device(candidates: Iterable[Candidate]) -> tuple[str, ...]:
     return tuple(taken)
 
 
-def named_or_discovered(named: tuple[str, ...] | None, discovered: Iterable[str]) -> list[str]:
-    """A slot the add-on named is that slot's whole set; the registry read stands where it named none."""
-    return list(discovered) if named is None else list(named)
+def named_or_discovered(
+    named: tuple[str, ...] | None, discovered: Iterable[str], left_out: Iterable[str] = ()
+) -> list[str]:
+    """A slot the add-on named is that slot's whole set; elsewhere the registry read, less what was left out."""
+    if named is not None:
+        return list(named)
+    leave = set(left_out)
+    return [one for one in discovered if one not in leave]
 
 
 def changed(known: Iterable[str], now: Iterable[str]) -> tuple[tuple[str, ...], tuple[str, ...]]:

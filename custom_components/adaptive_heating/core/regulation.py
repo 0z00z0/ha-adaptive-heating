@@ -9,6 +9,10 @@ from enum import StrEnum
 from .defaults import STANDARD, Defaults
 
 
+# The slots the room page sets.
+ROOM_SLOTS = ("heaters", "temperature_sensors", "window_sensor", "power_sensor")
+
+
 class HoldingBehaviour(StrEnum):
     PACED = "paced"
     BAND = "band"
@@ -77,6 +81,9 @@ class Regulation:
     floor_rise_per_degree: float | None = None
     # Kept across a restart, unlike the slots below: without it a floor-limited room loses its floor cut.
     floor_sensor: str | None = None
+    # Left out of this room by hand. Kept across a restart: the discovery that follows one must not
+    # drive a heater a person took out.
+    left_out: tuple[str, ...] = ()
 
     # The slots the add-on names by hand. Nothing means the registry read stands for that slot.
     # Deliberately outside `as_dict`: a restart drives what it discovers until the add-on names
@@ -190,6 +197,7 @@ class Regulation:
             "floor_sensor": self.floor_sensor,
             "floor_limit": self.floor_limit,
             "floor_rise_per_degree": self.floor_rise_per_degree,
+            "left_out": list(self.left_out),
         }
 
     @classmethod
@@ -236,6 +244,7 @@ class Regulation:
                 else str(stored["floor_sensor"]),
                 floor_limit=_optional_float(stored, "floor_limit"),
                 floor_rise_per_degree=_optional_float(stored, "floor_rise_per_degree"),
+                left_out=tuple(str(one) for one in stored.get("left_out") or ()),  # type: ignore[union-attr]
             )
         except (TypeError, ValueError):
             return standing
