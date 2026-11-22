@@ -1,0 +1,36 @@
+{
+  "config": {
+    "step": {
+      "rooms": {
+        "title": "Rom",
+        "data": {
+          "heaters": "Varmekilder",
+          "temperature_sensors": "Temperaturfølere"
+        },
+        "data_description": {
+          "heaters": "Området til hver varmekilde blir et rom. Oppsettet gir den etiketten heating.",
+          "temperature_sensors": "Leses av rommet i følerens område."
+        }
+      },
+      "reconfigure": {
+        "title": "Rom",
+        "data": {
+          "heaters": "Varmekilder",
+          "temperature_sensors": "Temperaturfølere"
+        },
+        "data_description": {
+          "heaters": "Hver varmekildes område blir et rom. Det som ikke er valgt, mister etiketten heating.",
+          "temperature_sensors": "Leses av rommet i følerens område."
+        }
+      }
+    },
+    "error": {
+      "no_heater": "Velg minst én varmekilde.",
+      "no_area": "Uten område: {entities}. Gi hver av dem et område først."
+    },
+    "abort": {
+      "single_instance_allowed": "Adaptive Heating er allerede satt opp.",
+      "reconfigure_successful": "Rommene er oppdatert."
+    }
+  }
+}

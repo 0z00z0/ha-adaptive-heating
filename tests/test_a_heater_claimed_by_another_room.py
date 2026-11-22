@@ -44,16 +44,18 @@ class AHeaterBelongsToOneRoomTests(unittest.TestCase):
 
 
 class TheWordsTheHouseIsSetUpWithTests(unittest.TestCase):
-    """One entry, one confirm step, and a sentence short enough to read on a card."""
+    """One entry, one picker step, and field words short enough to read on a card."""
 
-    def test_both_string_files_offer_the_house_and_ask_for_nothing(self) -> None:
-        for name in ("strings.json", "translations/en.json"):
+    def test_every_string_file_asks_only_for_heaters_and_sensors_in_short_words(self) -> None:
+        for name in ("strings.json", "translations/en.json", "translations/nb.json"):
             words = json.loads((COMPONENT / name).read_text(encoding="utf-8"))
             self.assertNotIn("options", words, name)
-            step = words["config"]["step"]["user"]
-            self.assertNotIn("data", step, name)
-            # Short by design: a label, not prose.
-            self.assertLess(len(step["description"]), 70, name)
+            for step_id in ("rooms", "reconfigure"):
+                step = words["config"]["step"][step_id]
+                self.assertEqual(set(step["data"]), {"heaters", "temperature_sensors"}, name)
+                # Short by design: a label, not prose.
+                for sentence in step["data_description"].values():
+                    self.assertLess(len(sentence), 90, name)
 
     def test_the_refusal_a_named_heater_set_meets_is_short(self) -> None:
         sentence = REFUSAL_WORDS[NotHeating.THE_HEATER_BELONGS_TO_ANOTHER_ROOM]

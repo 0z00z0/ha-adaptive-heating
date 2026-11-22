@@ -1,10 +1,36 @@
 {
   "config": {
     "step": {
-      "user": {
-        "title": "Adaptive Heating",
-        "description": "Rooms are the Areas with a heater labelled heating."
+      "rooms": {
+        "title": "Rooms",
+        "data": {
+          "heaters": "Heaters",
+          "temperature_sensors": "Temperature sensors"
+        },
+        "data_description": {
+          "heaters": "Each heater's area becomes a room. The setup labels it heating.",
+          "temperature_sensors": "Read by the room in the sensor's area."
+        }
+      },
+      "reconfigure": {
+        "title": "Rooms",
+        "data": {
+          "heaters": "Heaters",
+          "temperature_sensors": "Temperature sensors"
+        },
+        "data_description": {
+          "heaters": "Each heater's area becomes a room. Anything unticked loses the label heating.",
+          "temperature_sensors": "Read by the room in the sensor's area."
+        }
       }
+    },
+    "error": {
+      "no_heater": "Pick at least one heater.",
+      "no_area": "No area: {entities}. Give each an area first."
+    },
+    "abort": {
+      "single_instance_allowed": "Adaptive Heating is already set up.",
+      "reconfigure_successful": "Rooms updated."
     }
   },
   "entity": {

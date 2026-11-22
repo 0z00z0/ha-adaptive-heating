@@ -44,7 +44,7 @@ VOCABULARY_VERSION: Final = 2
 # The same string as manifest.json's version, which a test holds the two to. The thermostat publishes it, so
 # the add-on can tell this integration's thermostats from every other one in the house and the settings page
 # can state what each half is running.
-INTEGRATION_VERSION: Final = "0.2.0"
+INTEGRATION_VERSION: Final = "0.3.0"
 
 PLATFORMS: Final = ["climate", "sensor"]
 
