@@ -59,6 +59,13 @@ ATTR_HEATERS_NOT_RESPONDING: Final = "heaters_not_responding"
 # The lowest a thermostat underneath accepts, which a night setback is never planned below.
 ATTR_THERMOSTAT_MINIMUM: Final = "thermostat_minimum"
 
+# A Slow room: what it runs on, and the quarter hours the add-on fits its model from.
+ATTR_ROOM_TYPE: Final = "room_type"
+ATTR_SLOW_MODEL: Final = "slow_model"
+ATTR_PREDICTED_TEMPERATURE: Final = "predicted_temperature"
+ATTR_RESPONSE_TIME: Final = "response_time"
+ATTR_SLOW_BLOCKS: Final = "slow_blocks"
+
 
 # The platform translates the first four. Each custom name needs a text in both strings files.
 PLATFORM_PRESETS: Final = ("away", "sleep", "home", "boost")
@@ -99,6 +106,11 @@ EVERY_ATTRIBUTE: Final = frozenset(
         ATTR_HEATER_COUNT,
         ATTR_HEATERS_NOT_RESPONDING,
         ATTR_THERMOSTAT_MINIMUM,
+        ATTR_ROOM_TYPE,
+        ATTR_SLOW_MODEL,
+        ATTR_PREDICTED_TEMPERATURE,
+        ATTR_RESPONSE_TIME,
+        ATTR_SLOW_BLOCKS,
     }
 )
 
@@ -144,6 +156,10 @@ def attributes(
 ) -> dict[str, Any]:
     warm_up = thermostat.warm_up
     has_a_duty = decision is not None and decision.has_a_duty
+    regulation = thermostat.regulation
+    slow = regulation.slow and not thermostat.no_reading_at_all
+    predicted = thermostat.slow.ahead(reading.temperature, regulation) if slow else None
+    response = regulation.response_time if slow else None
     return {
         # The add-on finds its rooms by these. Nothing else in a house publishes them, so a thermostat
         # carrying them is one of this integration's and one carrying none is not. Both halves key a
@@ -193,4 +209,10 @@ def attributes(
         ATTR_HEATERS_NOT_RESPONDING: None if decision is None
         else thermostat.heaters_not_answering,
         ATTR_THERMOSTAT_MINIMUM: thermostat.thermostat_minimum,
+        ATTR_ROOM_TYPE: str(regulation.room_type),
+        ATTR_SLOW_MODEL: None if not slow
+        else "learnt" if regulation.model_learnt else "learning",
+        ATTR_PREDICTED_TEMPERATURE: None if predicted is None else round(predicted, 2),
+        ATTR_RESPONSE_TIME: None if response is None else response.total_seconds(),
+        ATTR_SLOW_BLOCKS: list(thermostat.slow.blocks) if slow else None,
     }

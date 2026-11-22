@@ -97,6 +97,7 @@ class AdaptiveHeatingThermostat(ClimateEntity):
         self._outdoor_sensor: str | None = None
         self._neighbour: str | None = None
         self._power_sensor: str | None = None
+        self._floor_sensor: str | None = None
 
         self._attr_unique_id = self._identity.unique_id
         area = ar.async_get(hass).async_get_area(room.area_id)
@@ -204,6 +205,8 @@ class AdaptiveHeatingThermostat(ClimateEntity):
 
         stored = await self._store.async_load()
         self._thermostat.restore(stored, dt_util.utcnow())
+        # The one slot kept across a restart: a floor-limited room must not run without its floor cut.
+        self._floor_sensor = self._thermostat.regulation.floor_sensor
 
         self._watch_what_the_room_reads()
         self.async_on_remove(
@@ -244,7 +247,9 @@ class AdaptiveHeatingThermostat(ClimateEntity):
             self._watching_states()
             self._watching_states = None
         watched = [*self._sensors, *self._heaters]
-        for optional in (self._window_sensor, self._outdoor_sensor, self._power_sensor):
+        for optional in (
+            self._window_sensor, self._outdoor_sensor, self._power_sensor, self._floor_sensor
+        ):
             if optional:
                 watched.append(optional)
         if watched:
@@ -374,6 +379,7 @@ class AdaptiveHeatingThermostat(ClimateEntity):
         self._power_sensor = regulation.power_sensor
         self._outdoor_sensor = regulation.outdoor_sensor
         self._neighbour = regulation.neighbour
+        self._floor_sensor = regulation.floor_sensor
         self._thermostat.drive(self._heaters)
         # Follows from what the room reads and never from a sensor going quiet.
         self._thermostat.no_reading_at_all = not self._sensors and not self._neighbour
@@ -417,7 +423,13 @@ class AdaptiveHeatingThermostat(ClimateEntity):
         outdoor = self._outdoor(now)
         self._outdoor_now = outdoor
         decision = self._thermostat.evaluate(
-            now, self._reading, outdoor, self._window(now), self._power(now), self._relays()
+            now,
+            self._reading,
+            outdoor,
+            self._window(now),
+            self._power(now),
+            self._relays(),
+            self._floor(now),
         )
         self._decision = decision
 
@@ -466,7 +478,8 @@ class AdaptiveHeatingThermostat(ClimateEntity):
         return bool(self._heaters) and all(is_a_thermostat(one) for one in self._heaters)
 
     def _note_what_the_sensors_say(self, now: datetime) -> None:
-        for sensor_id in self._sensors:
+        floor = [self._floor_sensor] if self._floor_sensor else []
+        for sensor_id in [*self._sensors, *floor]:
             state = self.hass.states.get(sensor_id)
             if state is None or state.state in UNUSABLE:
                 continue
@@ -490,7 +503,7 @@ class AdaptiveHeatingThermostat(ClimateEntity):
         )
 
     def _room_reading(self, now: datetime) -> RoomReading:
-        regulation = self._thermostat.regulation
+        regulation = self._thermostat.regulation.sensor_rules
         if self._sensors:
             return read(
                 self._thermostat.freshness.readings(
@@ -503,6 +516,19 @@ class AdaptiveHeatingThermostat(ClimateEntity):
         if lender is None:
             return NO_READING
         return borrow(lender._reading, lender.entity_id or lender._area_id)
+
+    def _floor(self, now: datetime) -> float | None:
+        """The floor sensor under the same verdicts as the air's, judged on its own."""
+        if not self._floor_sensor:
+            return None
+        regulation = self._thermostat.regulation.sensor_rules
+        return read(
+            self._thermostat.freshness.readings(
+                [self._floor_sensor], now, regulation.sensor_freshness
+            ),
+            now,
+            regulation,
+        ).temperature
 
     def _lender(self) -> AdaptiveHeatingThermostat | None:
         if not self._neighbour:

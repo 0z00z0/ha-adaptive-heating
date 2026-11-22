@@ -34,7 +34,8 @@
           "the_mode_says_off": "Off by the mode",
           "the_room_has_no_reading": "Room has no sensor",
           "the_heater_is_not_answering": "Heater not answering",
-          "the_heater_belongs_to_another_room": "Heater driven elsewhere"
+          "the_heater_belongs_to_another_room": "Heater driven elsewhere",
+          "floor_at_its_limit": "Floor at its limit"
         }
       }
     }
@@ -70,6 +71,18 @@
       "options": {
         "on": "The frost temperature holds",
         "off": "No limit"
+      }
+    },
+    "room_type": {
+      "options": {
+        "fast": "Fast",
+        "slow": "Slow"
+      }
+    },
+    "slow_model": {
+      "options": {
+        "learning": "Learning",
+        "learnt": "Learnt"
       }
     }
   },
@@ -195,6 +208,38 @@
         "frost_limit": {
           "name": "Frost limit",
           "description": "Off leaves only the thermostat's own lowest setting."
+        },
+        "room_type": {
+          "name": "Room type",
+          "description": "Slow holds a room whose heat arrives hours late."
+        },
+        "slow_model": {
+          "name": "Slow model",
+          "description": "Learnt runs the model. Learning runs a plain band."
+        },
+        "dead_time": {
+          "name": "Dead time",
+          "description": "How long heat takes to show in the air."
+        },
+        "lag": {
+          "name": "Lag",
+          "description": "How slowly the air then follows."
+        },
+        "full_output_rise": {
+          "name": "Rise at full output",
+          "description": "How far above outdoors full output holds the air."
+        },
+        "floor_sensor": {
+          "name": "Floor sensor",
+          "description": "Keeps a Slow room's floor under its limit."
+        },
+        "floor_limit": {
+          "name": "Floor limit",
+          "description": "The warmest the floor may get."
+        },
+        "floor_rise_per_degree": {
+          "name": "Floor rise per degree",
+          "description": "Floor above air, per degree air above outdoors."
         }
       }
     },

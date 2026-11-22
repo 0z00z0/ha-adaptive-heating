@@ -27,6 +27,9 @@ class Stage(StrEnum):
     # repeats its holding duty as a relay does.
     HOLDING_A_SETPOINT = "holding_a_setpoint"
 
+    # A learnt Slow room without its air reading, paced on the model's feed-forward.
+    FEED_FORWARD = "feed_forward"
+
 
 @dataclass(frozen=True, slots=True)
 class RelayObservation:
@@ -185,13 +188,21 @@ class HeaterLoop(RemembersHoldingDuties):
         at_full_output: bool = False,
         no_reading_at_all: bool = False,
         observed: RelayObservation | None = None,
+        paced: tuple[float, Stage] | None = None,
     ) -> LoopDecision:
+        """`paced` is a share and stage decided for the whole room, which this loop only paces."""
         self.see(observed)
 
         if no_reading_at_all:
             return self._switch(now, regulation)
 
         self._note_the_blind_spell(now, room)
+        if paced is not None:
+            duty, stage = paced
+            delivered = regulation.deliverable(duty)
+            wanted = self._cycle_wants(now, delivered, regulation)
+            resting = room is not None and room < target
+            return self._apply(now, wanted, duty, delivered, stage, regulation, resting)
         duty, stage = self._duty(now, room, target, outdoor, regulation, at_full_output)
 
         on_the_band = regulation.behaviour is HoldingBehaviour.BAND

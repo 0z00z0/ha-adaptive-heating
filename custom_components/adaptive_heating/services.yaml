@@ -190,6 +190,59 @@ set_regulation:
           options:
             - "on"
             - "off"
+    room_type:
+      required: false
+      selector:
+        select:
+          translation_key: room_type
+          options:
+            - fast
+            - slow
+    slow_model:
+      required: false
+      selector:
+        select:
+          translation_key: slow_model
+          options:
+            - learning
+            - learnt
+    dead_time:
+      required: false
+      selector:
+        duration:
+    lag:
+      required: false
+      selector:
+        duration:
+    full_output_rise:
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 200
+          step: 0.1
+          unit_of_measurement: "°C"
+    floor_sensor:
+      required: false
+      selector:
+        entity:
+          domain: sensor
+          device_class: temperature
+    floor_limit:
+      required: false
+      selector:
+        number:
+          min: 15
+          max: 40
+          step: 0.5
+          unit_of_measurement: "°C"
+    floor_rise_per_degree:
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 5
+          step: 0.01
 
 return_to_target:
   target:

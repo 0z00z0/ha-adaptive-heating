@@ -18,6 +18,9 @@ class NotHeating(StrEnum):
     PACING_THE_CYCLE = "pacing_the_cycle"
     RELAY_GUARD_IS_HOLDING = "relay_guard_is_holding"
 
+    # A Slow room's floor at its limit minus half a degree. The relay stays open whatever the air needs.
+    FLOOR_AT_ITS_LIMIT = "floor_at_its_limit"
+
     # A room with no reading at all. The mode says off, or its heater's own dial holds whatever the
     # room is worth while the mode says on.
     THE_MODE_SAYS_OFF = "the_mode_says_off"

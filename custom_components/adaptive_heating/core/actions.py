@@ -32,6 +32,11 @@ SWITCHED = ("on", "off")
 # Whether the room's frost temperature holds. Off leaves only the device's own minimum.
 FROST_LIMIT = ("on", "off")
 
+ROOM_TYPES = ("fast", "slow")
+
+# Whether a Slow room runs its model. The add-on sends `learnt` only once it trusts the figures.
+SLOW_MODELS = ("learning", "learnt")
+
 
 def as_datetime(value: object) -> datetime | time:
     """A full date and time, or a clock time alone, which the handler reads as the next occurrence.
@@ -194,6 +199,14 @@ ACTIONS: tuple[Action, ...] = (
             # What a blind thermostat room's off-phase writes, the device's own minimum where it is higher.
             Field("frost_temperature", "number", False, -20.0, 30.0, 0.5),
             Field("frost_limit", "select", False, options=FROST_LIMIT),
+            Field("room_type", "select", False, options=ROOM_TYPES),
+            Field("slow_model", "select", False, options=SLOW_MODELS),
+            Field("dead_time", "duration"),
+            Field("lag", "duration"),
+            Field("full_output_rise", "number", False, 1.0, 200.0, 0.1),
+            Field("floor_sensor", "entity"),
+            Field("floor_limit", "number", False, 15.0, 40.0, 0.5),
+            Field("floor_rise_per_degree", "number", False, 0.0, 5.0, 0.01),
         ),
     ),
     Action(RETURN_TO_TARGET),

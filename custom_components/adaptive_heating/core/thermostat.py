@@ -13,9 +13,17 @@ from .freshness import FreshnessRecord
 from .loop import HeaterLoop, LoopDecision, RelayObservation, Stage
 from .power import PowerWatch
 from .reasons import Fault, NotHeating, Refused
-from .regulation import BandLearning, HoldingBehaviour, Regulation, Switched
+from .regulation import (
+    BandLearning,
+    HoldingBehaviour,
+    Regulation,
+    RoomType,
+    SlowModel,
+    Switched,
+)
 from .sensors import NO_READING, RoomReading
 from .setpoint import SetpointLoop, ThermostatObservation, is_a_thermostat
+from .slow import DECISION_INTERVAL, FLOOR_CUT_BELOW_LIMIT, SlowRoom
 from .warmup import TimedHold, WarmingRate, WarmUp, WarmUpOutcome, plan
 
 
@@ -103,6 +111,8 @@ class RoomThermostat:
         self._watching: float | None = None
         self._watching_closed = False
         self.last_warm_up: WarmUp | None = None
+        self.slow = SlowRoom(defaults)
+        self.floor: float | None = None
 
     def drive(self, heater_ids: list[str]) -> None:
         """Point the room at a heater set, keeping the loop of every heater that stays.
@@ -165,6 +175,10 @@ class RoomThermostat:
     ) -> WarmUp:
         self._refuse_while_off()
         self._refuse_without_a_reading()
+        if self._slow and self.regulation.model_learnt:
+            starts_at, reaches, short_by = self._model_start(temperature, deadline, now, None)
+            self.warm_up = WarmUp(temperature, deadline, starts_at, reaches, short_by)
+            return self.warm_up
         self.warm_up = plan(
             temperature, deadline, now, self.reading.temperature, self.warming_rate, self._defaults
         )
@@ -193,6 +207,10 @@ class RoomThermostat:
             known["switched"] = Switched(str(known["switched"]))
         if "frost_limit" in known:
             known["frost_limit"] = str(known["frost_limit"]) == "on"
+        if "room_type" in known:
+            known["room_type"] = RoomType(str(known["room_type"]))
+        if "slow_model" in known:
+            known["slow_model"] = SlowModel(str(known["slow_model"]))
         for slot in ("heaters", "temperature_sensors"):
             if slot in known:
                 known[slot] = tuple(known[slot])  # type: ignore[call-overload]
@@ -235,6 +253,24 @@ class RoomThermostat:
     def coldest_outdoor_recently(self) -> float | None:
         return min((t for _, t in self._outdoor_seen), default=None)
 
+    @property
+    def _slow(self) -> bool:
+        # A room with no reading at all can only be switched, whatever type it is given.
+        return self.regulation.slow and not self.no_reading_at_all
+
+    def _outdoor_for_the_model(self, outdoor: float | None) -> float:
+        if outdoor is not None:
+            return outdoor
+        if self._outdoor_seen:
+            return self._outdoor_seen[-1][1]
+        return self._defaults.outdoor_never_seen
+
+    def _relays_closed_share(self) -> float:
+        relays = [loop for loop in self.loops if isinstance(loop, HeaterLoop)]
+        if not relays:
+            return 0.0
+        return sum(1.0 for loop in relays if loop.relay_closed) / len(relays)
+
     # ----- the evaluation ----------------------------------------------------------------------
 
     def evaluate(
@@ -245,8 +281,12 @@ class RoomThermostat:
         window: WindowState = WindowState.CLOSED,
         power: float | None = None,
         relays: dict[str, RelayObservation | ThermostatObservation] | None = None,
+        floor: float | None = None,
     ) -> Decision:
+        # Read before the switches are seen: what the relays held since the last evaluation.
+        held = self._relays_closed_share()
         self.reading = reading
+        self.floor = floor
         # What each switch says about itself, before anything is decided from it. A room that heats
         # nothing this pass still has to reconcile, or a heater found on stays on.
         for loop in self.loops:
@@ -257,6 +297,10 @@ class RoomThermostat:
         self._forget_a_rate_this_room_cannot_have()
         self._settle_window(now, window)
         self._retire_finished_work(now)
+        slow = self._slow
+        if slow:
+            self.slow.note(now, held, reading.temperature, outdoor, floor, self.regulation)
+            self._solve_the_warm_up_again(now, outdoor)
 
         target = self.temperature_it_would_hold(now)
         self._note_power(now, target, power)
@@ -275,19 +319,31 @@ class RoomThermostat:
             and (reading.temperature is None or reading.temperature < self.warm_up.temperature)
         )
         regulation = replace(self.regulation, band=self.band_learning.in_force)
+        loop_target = target
+        paced: tuple[float, Stage] | None = None
+        floor_cut = False
+        if slow:
+            regulation, loop_target, at_full_output, paced, floor_cut = self._slow_plan(
+                now, reading, target, effective_outdoor, at_full_output
+            )
 
         decisions: list[LoopDecision] = []
         commands: list[Command] = []
         for loop in self.loops:
-            decision = loop.evaluate(
-                now,
-                reading.temperature,
-                target,
-                effective_outdoor,
-                regulation,
-                at_full_output,
-                self.no_reading_at_all,
-            )
+            if paced is not None and isinstance(loop, HeaterLoop):
+                decision = loop.evaluate(
+                    now, reading.temperature, loop_target, effective_outdoor, regulation, paced=paced
+                )
+            else:
+                decision = loop.evaluate(
+                    now,
+                    reading.temperature,
+                    loop_target,
+                    effective_outdoor,
+                    regulation,
+                    at_full_output,
+                    self.no_reading_at_all,
+                )
             decisions.append(decision)
             if decision.changed:
                 commands.append(self._command(loop, decision))
@@ -298,7 +354,9 @@ class RoomThermostat:
             for loop, decision in zip(self.loops, decisions, strict=True)
             if isinstance(loop, HeaterLoop)
         ]
-        self._watch_the_drift(reading.temperature, target, on_relays)
+        # A Slow room's band is the widest there is, and learning it narrower would undo that.
+        if not slow:
+            self._watch_the_drift(reading.temperature, target, on_relays)
         # A blind thermostat runs the relay's fallback, so it has a duty for as long as that lasts.
         with_a_duty = on_relays + [
             decision
@@ -310,7 +368,7 @@ class RoomThermostat:
         duty = max((decision.duty for decision in with_a_duty), default=0.0)
         delivered = max((decision.delivered for decision in with_a_duty), default=0.0)
         stage = decisions[0].stage if decisions else Stage.NOT_HEATING
-        reason = None if heating else self._why_not(reading, decisions)
+        reason = None if heating else self._why_not(reading, decisions, floor_cut)
         return Decision(
             target,
             heating,
@@ -326,6 +384,86 @@ class RoomThermostat:
             self.power.fault,
             bool(with_a_duty) or not self.loops,
         )
+
+    def _slow_plan(
+        self,
+        now: datetime,
+        reading: RoomReading,
+        target: float,
+        outdoor: float | None,
+        at_full_output: bool,
+    ) -> tuple[Regulation, float, bool, tuple[float, Stage] | None, bool]:
+        """A Slow room's relays: the regulation, the target, full output, a share and a floor cut."""
+        regulation = self.regulation
+        floor = self.floor if regulation.floor_limited else None
+        floor_lost = regulation.floor_limited and floor is None
+        floor_cut = floor is not None and floor >= (
+            float(regulation.floor_limit) - FLOOR_CUT_BELOW_LIMIT  # type: ignore[arg-type]
+        )
+        if not regulation.model_learnt:
+            band = replace(
+                regulation, behaviour=HoldingBehaviour.BAND, band=self._defaults.band_ceiling
+            )
+            # Nothing says how warm the floor runs, so only frost protection heats it.
+            loop_target = min(target, regulation.frost_temperature) if floor_lost else target
+            paced = (0.0, Stage.BAND) if floor_cut else None
+            return band, loop_target, at_full_output and not floor_lost, paced, floor_cut
+        warming = self.warm_up is not None and self.warm_up.running(now)
+        share = self.slow.decide(
+            now,
+            reading.temperature,
+            floor,
+            self._outdoor_for_the_model(outdoor),
+            target,
+            warming,
+            regulation,
+        )
+        stage = (
+            Stage.FULL_OUTPUT if share.full_output
+            else Stage.FEED_FORWARD if share.blind
+            else Stage.PACING
+        )
+        duty = share.share
+        if floor_cut:
+            self.slow.cut()
+            duty = 0.0
+        return regulation, target, False, (duty, stage), floor_cut
+
+    def _solve_the_warm_up_again(self, now: datetime, outdoor: float | None) -> None:
+        """A Slow room's start moves with the predicted air until the warm-up has started."""
+        warm_up = self.warm_up
+        if (
+            warm_up is None
+            or not self.regulation.model_learnt
+            or warm_up.finished(now)
+            or self.slow.warm_up_started_for == warm_up.deadline
+            or not self.slow.due(now)
+        ):
+            return
+        warm_up.starts_at, warm_up.reaches, warm_up.short_by = self._model_start(
+            warm_up.temperature,
+            warm_up.deadline,
+            now,
+            outdoor if outdoor is not None else self.coldest_outdoor_recently,
+        )
+
+    def _model_start(
+        self, temperature: float, deadline: datetime, now: datetime, outdoor: float | None
+    ) -> tuple[datetime, float | None, float | None]:
+        """A start is taken only at a decision. Until then it stays a decision away, so it cannot slip in between."""
+        starts_at, reaches, short_by = self.slow.warm_up_start(
+            temperature,
+            deadline,
+            now,
+            self.slow.ahead(self.reading.temperature, self.regulation),
+            self._outdoor_for_the_model(outdoor),
+            self.regulation,
+        )
+        if starts_at <= now:
+            self.slow.warm_up_started_for = deadline
+        else:
+            starts_at = max(starts_at, now + DECISION_INTERVAL)
+        return starts_at, reaches, short_by
 
     @staticmethod
     def _command(loop: HeaterLoop | SetpointLoop, decision: LoopDecision) -> Command:
@@ -374,9 +512,13 @@ class RoomThermostat:
             has_a_duty,
         )
 
-    def _why_not(self, reading: RoomReading, decisions: list[LoopDecision]) -> NotHeating:
+    def _why_not(
+        self, reading: RoomReading, decisions: list[LoopDecision], floor_cut: bool = False
+    ) -> NotHeating:
         if any(decision.held_by_the_relay_guard for decision in decisions):
             return NotHeating.RELAY_GUARD_IS_HOLDING
+        if floor_cut:
+            return NotHeating.FLOOR_AT_ITS_LIMIT
         if any(d.reason is NotHeating.THE_HEATER_IS_NOT_ANSWERING for d in decisions):
             return NotHeating.THE_HEATER_IS_NOT_ANSWERING
         # A room with no reading at all is not missing one: the mode simply says off.
@@ -401,6 +543,8 @@ class RoomThermostat:
         # name that room for ever, and there is nothing to go and look at.
         if self.no_reading_at_all:
             return self.power.fault is not None
+        if self.regulation.floor_limited and self.floor is None:
+            return True
         return bool(reading.left_out) or not reading.has_a_temperature or self.power.fault is not None
 
     def _a_thermostat_is_not_answering(self) -> bool:
@@ -483,6 +627,7 @@ class RoomThermostat:
             "freshness": self.freshness.as_dict(),
             "loops": {loop.heater_id: loop.as_dict() for loop in self.loops},
             "outdoor_seen": [[at.isoformat(), value] for at, value in self._outdoor_seen],
+            "slow": self.slow.as_dict(),
         }
 
     def restore(self, stored: dict[str, object] | None, now: datetime) -> None:
@@ -527,6 +672,7 @@ class RoomThermostat:
         if isinstance(loops, dict):
             for loop in self.loops:
                 loop.restore(loops.get(loop.heater_id))
+        self.slow = SlowRoom.from_dict(stored.get("slow"), self._defaults)
         seen = stored.get("outdoor_seen")
         if isinstance(seen, list):
             for entry in seen:
