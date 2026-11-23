@@ -5,6 +5,7 @@ from __future__ import annotations
 import unittest
 
 from _core import at
+from core.freshness import FreshnessRecord
 from core.sensors import SensorExclusion, SensorReading, read
 
 
@@ -38,17 +39,41 @@ class RoomSensorTests(unittest.TestCase):
         self.assertEqual(reading.temperature, 20.0)
         self.assertEqual(excluded_as(reading, "stuck"), SensorExclusion.STUCK)
 
-    def test_both_of_a_disagreeing_pair_are_dropped_and_the_room_loses_its_reading(self) -> None:
+    def test_two_live_sensors_that_disagree_give_their_average_and_are_named_apart(self) -> None:
         reading = read(
             [sensor("a", 18.0, moved=-10), sensor("b", 22.5, moved=-10)],
             at(),
         )
-        self.assertIsNone(reading.temperature)
-        self.assertEqual(reading.resting_on, 0)
-        self.assertEqual(len(reading.disagreeing_pair), 2)
-        self.assertEqual(
-            {v.temperature for v in reading.disagreeing_pair}, {18.0, 22.5}
-        )
+        self.assertEqual(reading.temperature, 20.25)
+        self.assertEqual(reading.resting_on, 2)
+        self.assertEqual(reading.left_out, ())
+        self.assertEqual({v.temperature for v in reading.apart}, {18.0, 22.5})
+
+    def test_a_sensor_going_quiet_drops_out_and_returns_when_it_reports_again(self) -> None:
+        record = FreshnessRecord()
+        record.note("dying", 23.0, at(minutes=0))
+        record.note("healthy", 20.0, at(minutes=0))
+        ids = ["dying", "healthy"]
+        self.assertEqual(read(record.readings(ids, at(minutes=30)), at(minutes=30)).temperature, 21.5)
+
+        record.note("healthy", 20.2, at(minutes=61))
+        quiet = read(record.readings(ids, at(minutes=61)), at(minutes=61))
+        self.assertEqual(quiet.temperature, 20.2)
+        self.assertEqual(excluded_as(quiet, "dying"), SensorExclusion.QUIET)
+
+        record.note("dying", 22.8, at(minutes=70))
+        back = read(record.readings(ids, at(minutes=70)), at(minutes=70))
+        self.assertEqual(back.temperature, 21.5)
+        self.assertEqual(back.left_out, ())
+
+    def test_a_sensor_home_assistant_calls_unavailable_is_quiet_at_once(self) -> None:
+        record = FreshnessRecord()
+        record.note("gone", 30.0, at(minutes=0))
+        record.note("live", 20.0, at(minutes=0))
+        readings = record.readings(["gone", "live"], at(minutes=5), unavailable=frozenset({"gone"}))
+        reading = read(readings, at(minutes=5))
+        self.assertEqual(reading.temperature, 20.0)
+        self.assertEqual(excluded_as(reading, "gone"), SensorExclusion.QUIET)
 
     def test_three_sensors_settle_a_disagreement_by_majority(self) -> None:
         reading = read(

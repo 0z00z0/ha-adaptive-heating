@@ -13,7 +13,7 @@ from datetime import timedelta
 from _core import at
 from core.reasons import NotHeating, Refused
 from core.regulation import Regulation
-from core.sensors import SensorExclusion, SensorReading, read
+from core.sensors import SensorReading, read
 from core.setup import heater_already_claimed
 from core.thermostat import RoomThermostat
 
@@ -30,21 +30,19 @@ class TheFourSensorSettingsTests(unittest.TestCase):
         sent = Regulation(sensor_freshness=timedelta(minutes=10))
         self.assertIsNone(read(readings, at(), sent).temperature)
 
-    def test_a_wider_spread_keeps_a_disagreeing_pair_the_standing_figure_throws_out(self) -> None:
+    def test_a_wider_spread_stops_calling_a_pair_apart_the_standing_figure_names(self) -> None:
         readings = [
             sensor("sensor.a", 18.0, reported=-1, moved=-1),
             sensor("sensor.b", 21.0, reported=-1, moved=-1),
         ]
         standing = read(readings, at())
 
-        self.assertIsNone(standing.temperature)
-        self.assertEqual(
-            {verdict.excluded for verdict in standing.verdicts},
-            {SensorExclusion.BOTH_OF_A_DISAGREEING_PAIR},
-        )
+        self.assertEqual(standing.temperature, 19.5)
+        self.assertEqual(len(standing.apart), 2)
 
         sent = read(readings, at(), Regulation(sensor_spread=4.0))
         self.assertEqual(sent.temperature, 19.5)
+        self.assertEqual(sent.apart, ())
 
     def test_a_shorter_stuck_window_leaves_a_flat_reading_out(self) -> None:
         readings = [

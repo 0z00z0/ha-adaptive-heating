@@ -23,6 +23,7 @@ ATTR_DUTY_ASKED_FOR: Final = "duty_asked_for"
 ATTR_RESTING_ON: Final = "reading_rests_on"
 ATTR_SENSORS_IN_THE_ROOM: Final = "sensors_in_the_room"
 ATTR_SENSORS_LEFT_OUT: Final = "sensors_left_out"
+ATTR_SENSORS_APART: Final = "sensors_apart"
 ATTR_BORROWED_FROM: Final = "reading_borrowed_from"
 ATTR_WARM_UP: Final = "warm_up"
 ATTR_HOLD_ENDS_AT: Final = "hold_ends_at"
@@ -90,6 +91,7 @@ EVERY_ATTRIBUTE: Final = frozenset(
         ATTR_RESTING_ON,
         ATTR_SENSORS_IN_THE_ROOM,
         ATTR_SENSORS_LEFT_OUT,
+        ATTR_SENSORS_APART,
         ATTR_BORROWED_FROM,
         ATTR_WARM_UP,
         ATTR_HOLD_ENDS_AT,
@@ -184,6 +186,7 @@ def attributes(
         ATTR_SENSORS_LEFT_OUT: {
             verdict.sensor_id: str(verdict.excluded) for verdict in reading.left_out
         },
+        ATTR_SENSORS_APART: {verdict.sensor_id: verdict.temperature for verdict in reading.apart},
         ATTR_BORROWED_FROM: reading.borrowed_from,
         ATTR_WARM_UP: None if warm_up is None else warm_up.as_dict(),
         ATTR_HOLD_ENDS_AT: None if thermostat.hold is None

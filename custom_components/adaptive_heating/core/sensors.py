@@ -20,7 +20,6 @@ class SensorExclusion(StrEnum):
     QUIET = "quiet"
     STUCK = "stuck"
     FAR_FROM_THE_OTHERS = "far_from_the_others"
-    BOTH_OF_A_DISAGREEING_PAIR = "both_of_a_disagreeing_pair"
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,6 +44,8 @@ class RoomReading:
     sensors_in_the_room: int
     verdicts: tuple[SensorVerdict, ...]
     borrowed_from: str | None = None
+    # Two live sensors further apart than the spread. Both stay in the average.
+    apart: tuple[SensorVerdict, ...] = ()
 
     @property
     def has_a_temperature(self) -> bool:
@@ -54,15 +55,14 @@ class RoomReading:
     def left_out(self) -> tuple[SensorVerdict, ...]:
         return tuple(v for v in self.verdicts if v.excluded is not SensorExclusion.NONE)
 
-    @property
-    def disagreeing_pair(self) -> tuple[SensorVerdict, ...]:
-        return tuple(
-            v for v in self.verdicts if v.excluded is SensorExclusion.BOTH_OF_A_DISAGREEING_PAIR
-        )
-
     def borrowed(self, lending_room: str) -> RoomReading:
         return RoomReading(
-            self.temperature, self.resting_on, self.sensors_in_the_room, self.verdicts, lending_room
+            self.temperature,
+            self.resting_on,
+            self.sensors_in_the_room,
+            self.verdicts,
+            lending_room,
+            self.apart,
         )
 
 
@@ -102,12 +102,13 @@ def read(
         else:
             live.append(sensor)
 
+    apart: tuple[SensorVerdict, ...] = ()
     if len(live) == 2 and abs(live[0].temperature - live[1].temperature) > settings.sensor_spread:
-        # Two sensors cannot say which of them is lying, so the room loses its temperature with
-        # both of them still reporting.
-        for sensor in live:
-            excluded[sensor.sensor_id] = SensorExclusion.BOTH_OF_A_DISAGREEING_PAIR
-        live = []
+        # Two cannot say which of them is lying, and one wrong sensor beats no reading at all.
+        apart = tuple(
+            SensorVerdict(sensor.sensor_id, sensor.temperature, SensorExclusion.NONE)
+            for sensor in live
+        )
     elif len(live) >= 3:
         middle = median(sensor.temperature for sensor in live)
         for sensor in list(live):
@@ -127,4 +128,4 @@ def read(
     temperature = (
         None if not live else sum(sensor.temperature for sensor in live) / len(live)
     )
-    return RoomReading(temperature, len(live), len(sensors), verdicts)
+    return RoomReading(temperature, len(live), len(sensors), verdicts, apart=apart)

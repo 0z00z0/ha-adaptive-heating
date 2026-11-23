@@ -55,14 +55,14 @@ class FreshnessComesFromThePlatformTests(unittest.TestCase):
         self.assertEqual(reading.resting_on, 1)
         self.assertEqual(excluded_as(reading, DEAD.sensor_id), SensorExclusion.QUIET)
 
-        # The room must not lose its temperature to a disagreement with a corpse.
-        self.assertEqual(reading.disagreeing_pair, ())
+        # A corpse is never averaged in, nor named as apart from the live one.
+        self.assertEqual(reading.apart, ())
 
     def test_a_platform_that_states_no_report_time_falls_back_to_when_it_was_updated(self) -> None:
         self.assertEqual(when_it_reported(None, at(minutes=-5), None), at(minutes=-5))
         self.assertIsNone(when_it_reported(None, None, None))
 
-    def test_two_sensors_that_really_are_both_reporting_still_settle_as_a_disagreeing_pair(
+    def test_two_sensors_that_really_are_both_reporting_are_averaged_and_named_apart(
         self,
     ) -> None:
         record = FreshnessRecord()
@@ -72,8 +72,8 @@ class FreshnessComesFromThePlatformTests(unittest.TestCase):
         )
 
         reading = read(record.readings(["sensor.one", LIVE.sensor_id], at()), at())
-        self.assertIsNone(reading.temperature)
-        self.assertEqual(len(reading.disagreeing_pair), 2)
+        self.assertAlmostEqual(reading.temperature, 14.65)
+        self.assertEqual(len(reading.apart), 2)
 
 
 class ARestartStampsEverySensorAtOnceTests(unittest.TestCase):

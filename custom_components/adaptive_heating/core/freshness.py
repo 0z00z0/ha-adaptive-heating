@@ -71,14 +71,22 @@ class FreshnessRecord:
         self._sensors.pop(sensor_id, None)
 
     def readings(
-        self, sensor_ids: list[str], as_at: datetime, freshness: timedelta | None = None
+        self,
+        sensor_ids: list[str],
+        as_at: datetime,
+        freshness: timedelta | None = None,
+        unavailable: frozenset[str] = frozenset(),
     ) -> list[SensorReading]:
-        """One reading per sensor the room names. A sensor with no record counts as stale."""
+        """One reading per sensor the room names. A sensor with no record counts as stale.
+
+        A sensor Home Assistant calls unavailable is quiet at once, so its last value does not
+        hold the average until the freshness window runs out. Its record is kept.
+        """
         stale = as_at - (freshness or self._defaults.sensor_freshness) - timedelta(seconds=1)
         out: list[SensorReading] = []
         for sensor_id in sensor_ids:
             known = self._sensors.get(sensor_id)
-            if known is None:
+            if known is None or sensor_id in unavailable:
                 out.append(SensorReading(sensor_id, None, stale, stale))
             else:
                 out.append(

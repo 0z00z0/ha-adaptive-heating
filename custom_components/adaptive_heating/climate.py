@@ -509,7 +509,7 @@ class AdaptiveHeatingThermostat(ClimateEntity):
         if self._sensors:
             return read(
                 self._thermostat.freshness.readings(
-                    self._sensors, now, regulation.sensor_freshness
+                    self._sensors, now, regulation.sensor_freshness, self._unavailable()
                 ),
                 now,
                 regulation,
@@ -518,6 +518,13 @@ class AdaptiveHeatingThermostat(ClimateEntity):
         if lender is None:
             return NO_READING
         return borrow(lender._reading, lender.entity_id or lender._area_id)
+
+    def _unavailable(self) -> frozenset[str]:
+        return frozenset(
+            sensor_id
+            for sensor_id in self._sensors
+            if (state := self.hass.states.get(sensor_id)) is None or state.state in UNUSABLE
+        )
 
     def _floor(self, now: datetime) -> float | None:
         """The floor sensor under the same verdicts as the air's, judged on its own."""
